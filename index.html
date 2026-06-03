@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>任务花园 — 打卡成功，花开满枝 · 拖延失败，入土为安</title>
+<style>
+:root {
+  --bg:#2a3820; --panel-bg:rgba(38,50,28,0.95); --text:#e8e4d8; --text-dim:#b0b8a0;
+  --accent:#e0c860; --accent-glow:#f8f0a0; --success:#90d870; --success-glow:#b8f898;
+  --danger:#d87058; --danger-glow:#f89880; --border:rgba(180,200,160,0.25);
+  --radius:12px; --shadow:0 4px 24px rgba(0,0,0,0.4);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);user-select:none;-webkit-user-select:none}
+.hidden{display:none!important}
+#app{display:flex;flex-direction:column;height:100vh}
+
+#header{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;background:linear-gradient(180deg,rgba(30,42,20,0.98),rgba(30,42,20,0.92));border-bottom:1px solid var(--border);z-index:100;backdrop-filter:blur(10px);gap:12px}
+#header .title{font-size:18px;font-weight:700;background:linear-gradient(135deg,var(--accent-glow),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap}
+#nav{display:flex;gap:4px}
+#nav button{padding:8px 18px;border:1px solid transparent;border-radius:20px;background:transparent;color:var(--text-dim);cursor:pointer;font-size:14px;transition:all .3s}
+#nav button:hover{color:var(--text);border-color:var(--border)}
+#nav button.active{color:var(--accent-glow);border-color:var(--accent);background:rgba(200,168,78,0.1)}
+#stats-bar{display:flex;gap:14px;font-size:12px;color:var(--text-dim);flex-wrap:wrap}
+#stats-bar span{display:flex;align-items:center;gap:3px}
+#stats-bar .streak{color:var(--accent-glow);font-weight:600}
+
+#main{flex:1;position:relative;overflow:hidden}
+.view{position:absolute;inset:0;display:none}
+.view.active{display:flex}
+
+#garden-view{flex-direction:column}
+#garden-canvas{flex:1;display:block}
+#garden-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:20px;background:rgba(0,0,0,0.7);color:var(--accent-glow);font-size:13px;pointer-events:none;transition:opacity .5s}
+#garden-info{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-dim);pointer-events:none}
+#place-queue{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow-y:auto}
+.place-queue-item{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:var(--panel-bg);border:1px solid var(--border);font-size:13px;cursor:pointer;transition:all .2s}
+.place-queue-item:hover{border-color:var(--accent)}
+.place-queue-item .pq-icon{font-size:20px}
+
+#task-view{flex-direction:column;padding:16px;overflow-y:auto;gap:12px}
+#task-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#task-toolbar button{padding:8px 16px;border:1px solid var(--border);border-radius:20px;background:var(--panel-bg);color:var(--text);cursor:pointer;font-size:13px;transition:all .2s}
+#task-toolbar button:hover{border-color:var(--accent)}
+#task-toolbar button.filter-active{background:rgba(200,168,78,0.2);border-color:var(--accent)}
+#btn-add-task{margin-left:auto;background:linear-gradient(135deg,rgba(200,168,78,0.3),rgba(200,168,78,0.1))!important;border-color:var(--accent)!important;color:var(--accent-glow)!important;font-weight:600}
+#task-list{display:flex;flex-direction:column;gap:10px}
+
+.task-card{position:relative;padding:14px 18px;border-radius:var(--radius);background:var(--panel-bg);border:1px solid var(--border);transition:all .4s;overflow:hidden}
+.task-card:hover{border-color:rgba(200,168,78,0.4)}
+.task-card.completed{border-color:var(--success);box-shadow:0 0 20px rgba(140,200,104,0.2),inset 0 0 20px rgba(140,200,104,0.05)}
+.task-card.failed{border-color:var(--danger);box-shadow:0 0 20px rgba(200,92,72,0.15);opacity:0.8}
+.task-card .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px}
+.task-card .card-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.task-card .card-type{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(200,168,78,0.15);color:var(--accent)}
+.task-card .card-type.long{background:rgba(160,140,200,0.15);color:#b8a8e0}
+.task-card .card-status{font-size:12px;padding:3px 10px;border-radius:10px}
+.task-card .card-status.pending{background:rgba(200,168,78,0.1);color:var(--accent)}
+.task-card .card-status.completed{background:rgba(140,200,104,0.15);color:var(--success)}
+.task-card .card-status.failed{background:rgba(200,92,72,0.15);color:var(--danger)}
+.task-card .card-details{font-size:13px;color:var(--text-dim);margin:4px 0}
+.task-card .card-details span{margin-right:12px}
+.task-card .card-notes{font-size:12px;color:var(--text-dim);font-style:italic;margin-top:4px}
+.task-card .card-actions{display:flex;gap:8px;margin-top:10px}
+.task-card .card-actions button{padding:6px 16px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:12px;transition:all .2s}
+.task-card .card-actions button:hover{border-color:var(--accent)}
+.task-card .btn-checkin{background:linear-gradient(135deg,rgba(140,200,104,0.3),rgba(140,200,104,0.1))!important;border-color:var(--success)!important;color:var(--success-glow)!important}
+.task-card .btn-checkin:hover{box-shadow:0 0 12px rgba(140,200,104,0.3)}
+.task-card .btn-delete{color:var(--danger)!important;border-color:transparent!important}
+.task-card.completed::before{content:'';position:absolute;top:-20px;left:10%;width:2px;height:20px;background:var(--success);animation:branchGrow .6s ease-out forwards}
+.task-card.completed::after{content:'';position:absolute;top:-30px;left:10%;width:30px;height:30px;background:radial-gradient(circle,#f0a0b8 0%,#f0a0b8 30%,transparent 70%);border-radius:50%;animation:flowerBloom .8s .4s ease-out forwards;opacity:0}
+@keyframes branchGrow{from{height:0}to{height:20px}}
+@keyframes flowerBloom{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+.task-card.failed{border-radius:6px 6px 12px 12px}
+.task-card.failed::before{content:'⚰️';position:absolute;top:8px;right:16px;font-size:24px;animation:coffinDrop .6s ease-out}
+@keyframes coffinDrop{from{transform:translateY(-40px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;backdrop-filter:blur(4px)}
+.modal-overlay.hidden{display:none}
+.modal{background:var(--panel-bg);border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-width:380px;max-width:90vw;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto;animation:modalIn .3s ease-out}
+@keyframes modalIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal h2{font-size:20px;margin-bottom:16px;color:var(--accent-glow)}
+.modal h3{font-size:15px;color:var(--text);margin:10px 0 6px}
+.modal label{display:block;font-size:13px;color:var(--text-dim);margin-bottom:4px;margin-top:12px}
+.modal input,.modal textarea,.modal select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border .2s}
+.modal input:focus,.modal textarea:focus,.modal select:focus{border-color:var(--accent)}
+.modal textarea{resize:vertical;min-height:60px}
+.modal .btn-row{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+.modal button{padding:10px 24px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px;transition:all .2s}
+.modal button:hover{filter:brightness(1.2)}
+.modal button.btn-primary{background:linear-gradient(135deg,rgba(200,168,78,0.4),rgba(200,168,78,0.2));border-color:var(--accent);color:var(--accent-glow)}
+.modal button.btn-danger{background:linear-gradient(135deg,rgba(200,92,72,0.3),rgba(200,92,72,0.1));border-color:var(--danger);color:var(--danger-glow)}
+
+#toast-container{position:fixed;top:70px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:20px;font-size:14px;animation:toastIn .4s ease-out,toastOut .4s 2.8s ease-in forwards;box-shadow:var(--shadow);max-width:360px;line-height:1.4}
+.toast.success{background:rgba(140,200,104,0.92);color:#fff}
+.toast.error{background:rgba(200,92,72,0.92);color:#fff}
+.toast.info{background:rgba(224,200,96,0.92);color:#1a2410}
+.toast.encourage{background:rgba(180,140,220,0.92);color:#fff;font-size:15px;font-weight:600;text-align:center}
+@keyframes toastIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes toastOut{from{transform:translateX(0);opacity:1}to{transform:translateX(100%);opacity:0}}
+
+#confetti-overlay{position:fixed;inset:0;pointer-events:none;z-index:1999}
+.confetti-piece{position:absolute;width:12px;height:12px;animation:confettiFall linear forwards}
+@keyframes confettiFall{
+  0%{transform:translateY(-10vh) rotate(0deg) scale(1);opacity:1}
+  80%{opacity:1}
+  100%{transform:translateY(110vh) rotate(1080deg) scale(0.2);opacity:0}
+}
+
+#particle-overlay{position:fixed;inset:0;pointer-events:none;z-index:998}
+.petal{position:absolute;border-radius:50%;animation:petalFall linear forwards}
+@keyframes petalFall{
+  0%{transform:translateY(-10vh) rotate(0deg) scale(1);opacity:1}
+  100%{transform:translateY(110vh) rotate(720deg) scale(0.3);opacity:0}
+}
+
+.achievement-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;margin:2px}
+.achievement-badge.gold{background:rgba(240,200,80,0.2);color:#f0d050;border:1px solid rgba(240,200,80,0.4)}
+.achievement-badge.silver{background:rgba(180,190,200,0.2);color:#c0d0e0;border:1px solid rgba(180,190,200,0.4)}
+.achievement-badge.bronze{background:rgba(200,150,100,0.2);color:#d0a070;border:1px solid rgba(200,150,100,0.4)}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--text-dim);text-align:center}
+.empty-state .empty-icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px;line-height:1.8}
+
+@media(max-width:640px){
+  #header{padding:8px 12px;flex-wrap:wrap;gap:4px}
+  #header .title{font-size:14px}
+  #nav button{padding:6px 12px;font-size:12px}
+  #stats-bar{font-size:10px;gap:6px}
+  #task-view{padding:10px}
+  .modal{min-width:auto;width:95vw;padding:16px}
+  .task-card .card-header{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="header">
+    <span class="title">🏡 任务花园</span>
+    <nav id="nav">
+      <button data-view="garden" class="active">🌾 荒野</button>
+      <button data-view="tasks">📋 任务</button>
+      <button data-view="achievements">🏆 成就</button>
+    </nav>
+    <div id="stats-bar">
+      <span>🌸 <strong id="stat-completed">0</strong></span>
+      <span>⚰️ <strong id="stat-failed">0</strong></span>
+      <span>🌳 <strong id="stat-trees">0</strong></span>
+      <span class="streak">🔥 <strong id="stat-streak">0</strong>天</span>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="garden-view" class="view active">
+      <canvas id="garden-canvas"></canvas>
+      <div id="garden-info"></div>
+      <div id="garden-hint">🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置</div>
+      <div id="place-queue"></div>
+    </div>
+
+    <div id="task-view" class="view">
+      <div id="task-toolbar">
+        <button class="filter-active" data-filter="all">全部</button>
+        <button data-filter="short">⚡ 短期</button>
+        <button data-filter="long">🎯 长期</button>
+        <button data-filter="completed">✅ 已完成</button>
+        <button data-filter="failed">❌ 已失败</button>
+        <button id="btn-add-task">＋ 新建任务</button>
+      </div>
+      <div id="task-list"></div>
+      <div id="empty-tasks" class="empty-state">
+        <div class="empty-icon">📝</div>
+        <p>还没有任务<br>点击「＋ 新建任务」开始规划你的一天<br><small>完成打卡可获得花朵，布置在荒野上</small></p>
+      </div>
+    </div>
+
+    <div id="achievements-view" class="view">
+      <div style="flex-direction:column;padding:20px;overflow-y:auto;width:100%;gap:16px;display:flex">
+        <div id="achievements-content"></div>
+        <div class="empty-state" id="empty-achievements">
+          <div class="empty-icon">🏆</div>
+          <p>还没有解锁成就<br>坚持打卡，解锁更多奖励！</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals -->
+<div id="modal-add" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>📝 新建任务</h2>
+    <label>任务名称</label>
+    <input type="text" id="add-title" placeholder="例如：完成周报、跑步30分钟…" maxlength="60">
+    <label>截止时间</label>
+    <input type="datetime-local" id="add-deadline">
+    <label>备注</label>
+    <textarea id="add-notes" placeholder="可选备注…" maxlength="200"></textarea>
+    <label>任务类型</label>
+    <select id="add-type">
+      <option value="short">⚡ 短期任务（今日事今日毕）</option>
+      <option value="long-single">🎯 长期任务 — 单次完成</option>
+      <option value="long-cumulative">📅 长期任务 — 累计打卡</option>
+    </select>
+    <div id="long-options" class="hidden">
+      <label>任务周期</label>
+      <select id="add-period">
+        <option value="week">📅 一周</option>
+        <option value="month">📅 一个月</option>
+        <option value="quarter">📅 三个月</option>
+        <option value="custom">📅 自定义天数</option>
+      </select>
+      <div id="custom-days-wrap" class="hidden">
+        <label>累计打卡天数要求</label>
+        <input type="number" id="add-custom-days" min="2" max="365" value="7">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button onclick="app.closeModal('modal-add')">取消</button>
+      <button class="btn-primary" onclick="app.addTask()">确认创建</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-extend" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>⏰ 任务已超时</h2>
+    <p style="color:var(--text-dim);margin-bottom:12px">你还有一次延期机会！设置新的截止时间：</p>
+    <label>延长时间到</label>
+    <input type="datetime-local" id="extend-deadline">
+    <div class="btn-row">
+      <button class="btn-danger" onclick="app.declineExtend()">放弃任务</button>
+      <button class="btn-primary" onclick="app.confirmExtend()">延长时间</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-place" class="modal-overlay hidden">
+  <div class="modal" style="text-align:center">
+    <h2 id="place-title"></h2>
+    <div id="place-icon" style="font-size:64px;margin:16px 0"></div>
+    <p style="color:var(--text-dim)" id="place-desc"></p>
+    <div class="btn-row" style="justify-content:center">
+      <button class="btn-primary" onclick="app.goPlaceItem()">去荒野布置</button>
+      <button onclick="app.skipPlace()">稍后再说</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="particle-overlay"></div>
+<div id="confetti-overlay"></div>
+
+<script>
+// ============================================================
+//  任务花园 v2 — 打卡成功，花开满枝；拖延失败，入土为安
+// ============================================================
+var app; // 提前声明避免 TDZ
+
+// ============ Utilities ============
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const fmtTime=(iso)=>{if(!iso)return'—';const d=new Date(iso);return`${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+const fmtDate=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayStr=()=>fmtDate(new Date());
+const weekStr=()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return fmtDate(d)};
+
+// ============ Real Plant Species ============
+const FLOWER_SPECIES=[
+  {name:'蔷薇', colors:['#f098a8','#f8c0d0','#e87080'], petals:5, layers:2, size:14, leafColor:'#5a8a3a'},
+  {name:'向日葵', colors:['#f8d860','#f0c040','#e8a820'], petals:12, layers:1, size:16, leafColor:'#4a7a2a'},
+  {name:'薰衣草', colors:['#c8a8e8','#b898d8','#d8b8f8'], petals:0, layers:0, size:12, leafColor:'#6a8a5a', isSpike:true},
+  {name:'樱花', colors:['#f8d0d8','#f8c0d0','#f8e0e8'], petals:5, layers:1, size:11, leafColor:'#7a9a5a'},
+  {name:'雏菊', colors:['#f8f8f0','#f0f0e0','#ffffff'], petals:10, layers:1, size:10, leafColor:'#5a8a3a'},
+  {name:'郁金香', colors:['#f05040','#f06050','#f87060'], petals:6, layers:1, size:13, leafColor:'#4a7a3a', cupShape:true},
+  {name:'蓝铃花', colors:['#6898d8','#78a8e8','#5888c8'], petals:5, layers:1, size:11, leafColor:'#5a8a4a', bellShape:true},
+];
+const TREE_SPECIES=[
+  {name:'橡树', trunkColor:'#5a3a20', canopyColors:['#3a6a2a','#4a8a3a','#5a9a4a'], canopyShape:'round', size:68},
+  {name:'松树', trunkColor:'#4a3020', canopyColors:['#2a5a2a','#3a6a3a','#2a4a2a'], canopyShape:'triangle', size:62},
+  {name:'枫树', trunkColor:'#5a3a28', canopyColors:['#c86030','#d87840','#e89050'], canopyShape:'round', size:62},
+  {name:'柳树', trunkColor:'#4a3528', canopyColors:['#5a8a3a','#6a9a4a','#7aaa5a'], canopyShape:'weeping', size:72},
+  {name:'榕树', trunkColor:'#4a3020', canopyColors:['#3a7a2a','#4a8a3a','#2a6a20'], canopyShape:'banyan', size:78},
+];
+
+// ============ Encouragement Quotes ============
+const ENCOURAGEMENTS=[
+  '🌱 每一朵花都是坚持的证明！','💪 今日事今日毕，你是最棒的！','✨ 自律给你自由，花朵为你绽放！',
+  '🌟 又完成一项任务，了不起！','🎯 目标达成！继续向前！','🏆 打卡成功！荒野因你而美丽~',
+  '🌺 你的努力正在荒地上开花结果！','🔥 坚持就是胜利，继续冲！','💎 优秀是一种习惯，你做到了！',
+  '🦋 每完成一个任务，花园就多一分生机！','🌈 积少成多，聚沙成塔！','⚡ 行动力拉满！今天也很努力呢~',
+  '🍀 好运眷顾勤奋的人！','🎨 你正在把荒地变成花园！','💖 对自己负责，就是最好的礼物。',
+];
+
+// ============ Data Layer ============
+const STORE_KEY='task-garden-data';
+const DATA_VERSION=2;
+
+function defaultData(){
+  return{
+    version:DATA_VERSION,
+    tasks:[],
+    gardenItems:[],
+    pendingPlacements:[],
+    stats:{totalCompleted:0,totalFailed:0,treesEarned:0},
+    deadTrees:[],
+    scheduledRewards:[],
+    achievements:{streak:0,bestStreak:0,lastCheckinDate:'',weeklySnapshots:{},animals:[]},
+  };
+}
+
+function migrateData(data){
+  if(!data.version||data.version<2){
+    if(!data.achievements) data.achievements={streak:0,bestStreak:0,lastCheckinDate:'',weeklySnapshots:{},animals:[]};
+    if(!data.scheduledRewards) data.scheduledRewards=[];
+    if(!data.stats.treesEarned) data.stats.treesEarned=0;
+    data.version=DATA_VERSION;
+  }
+  return data;
+}
+
+function loadData(){
+  try{
+    const raw=localStorage.getItem(STORE_KEY);
+    if(raw){
+      const data=JSON.parse(raw);
+      const def=defaultData();
+      for(const k of Object.keys(def)){
+        if(!(k in data)) data[k]=def[k];
+        else if(typeof def[k]==='object'&&def[k]&&!Array.isArray(def[k])){
+          for(const sk of Object.keys(def[k])){
+            if(!(sk in data[k])) data[k][sk]=def[k][sk];
+          }
+        }
+      }
+      return migrateData(data);
+    }
+  }catch(e){console.error('Load failed:',e);}
+  return defaultData();
+}
+
+function saveData(data){try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){console.error('Save failed:',e);}}
+
+// ============ Garden Renderer ============
+class GardenRenderer{
+  constructor(canvas){
+    this.canvas=canvas;
+    this.ctx=canvas.getContext('2d');
+    this.scale=1;this.offsetX=0;this.offsetY=0;
+    this.isDragging=false;this.hasDragged=false;
+    this.dragStartX=0;this.dragStartY=0;
+    this.dragStartOX=0;this.dragStartOY=0;
+    this.hoveredItem=null;this.animPhase=0;
+    this.initEvents();
+  }
+
+  resize(){
+    const rect=this.canvas.parentElement.getBoundingClientRect();
+    const dpr=window.devicePixelRatio||1;
+    this.canvas.width=rect.width*dpr;
+    this.canvas.height=rect.height*dpr;
+    this.canvas.style.width=rect.width+'px';
+    this.canvas.style.height=rect.height+'px';
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    this.w=rect.width;this.h=rect.height;
+    this.draw();
+  }
+
+  initEvents(){
+    this.canvas.addEventListener('wheel',(e)=>{
+      e.preventDefault();
+      const zoom=e.deltaY<0?1.1:0.9;
+      const mx=e.offsetX,my=e.offsetY;
+      this.offsetX=mx-(mx-this.offsetX)*zoom;
+      this.offsetY=my-(my-this.offsetY)*zoom;
+      this.scale=Math.max(0.4,Math.min(2.5,this.scale*zoom));
+      this.draw();
+    });
+
+    this.canvas.addEventListener('mousedown',(e)=>{
+      this.isDragging=true;this.hasDragged=false;
+      this.dragStartOX=this.offsetX;this.dragStartOY=this.offsetY;
+      this.dragStartX=e.offsetX;this.dragStartY=e.offsetY;
+    });
+
+    this.canvas.addEventListener('mousemove',(e)=>{
+      if(this.isDragging){
+        const dx=e.offsetX-this.dragStartX,dy=e.offsetY-this.dragStartY;
+        if(Math.abs(dx)>2||Math.abs(dy)>2) this.hasDragged=true;
+        if(this.hasDragged){
+          this.offsetX=this.dragStartOX+dx;
+          this.offsetY=this.dragStartOY+dy;
+          this.draw();
+        }
+      }
+      this.hoveredItem=this.getItemAt(e.offsetX,e.offsetY);
+      const pm=app&&app.placementMode;
+      this.canvas.style.cursor=this.hoveredItem?'pointer':(pm?'crosshair':'grab');
+      if(this.hasDragged) this.canvas.style.cursor='grabbing';
+    });
+
+    this.canvas.addEventListener('mouseup',()=>{this.isDragging=false;});
+
+    // Use browser's native click for reliable placement
+    this.canvas.addEventListener('click',(e)=>{
+      if(this.hasDragged){this.hasDragged=false;return;}
+      this.handleClick(e.offsetX,e.offsetY);
+    });
+
+    this.canvas.addEventListener('mouseleave',()=>{this.isDragging=false;this.hasDragged=false;});
+    window.addEventListener('resize',()=>this.resize());
+  }
+
+  getItemAt(mx,my){
+    if(!app)return null;
+    const data=app.data;
+    const items=data.gardenItems.concat(data.pendingPlacements.map(p=>({...p,isPending:true})));
+    for(let i=items.length-1;i>=0;i--){
+      const item=items[i];
+      if(item.x==null)continue;
+      const wx=item.x*this.w*this.scale+this.offsetX;
+      const wy=(item.y||0.5)*this.h*this.scale+this.offsetY;
+      if(Math.hypot(mx-wx,my-wy)<28) return item;
+    }
+    return null;
+  }
+
+  handleClick(mx,my){
+    if(!app)return;
+    if(app.placementMode&&app.currentPlacement){
+      const wx=(mx-this.offsetX)/(this.w*this.scale);
+      const wy=(my-this.offsetY)/(this.h*this.scale);
+      app.placeItem(Math.max(0.03,Math.min(0.97,wx)),Math.max(0.08,Math.min(0.9,wy)));
+      return;
+    }
+    if(this.hoveredItem&&!this.hoveredItem.isPending) app.showItemInfo(this.hoveredItem);
+  }
+
+  generateDeadTrees(count=30){
+    const trees=[];
+    const prng=(seed)=>{let s=seed;return()=>{s=(s*16807+0)%2147483647;return(s-1)/2147483646;};};
+    for(let i=0;i<count;i++){
+      const r=prng(i*137+42);
+      const bc=3+Math.floor(r()*7);
+      const bd=[];
+      for(let b=0;b<bc;b++) bd.push({angleOffset:(b/bc-0.5)*1.2,lenFactor:0.25+r()*0.12,subLen:0.25+r()*0.35,hasSub:b%2===0});
+      // Spread across wider area for viewport auto-fill
+      trees.push({x:-0.3+r()*1.6,y:0.25+r()*0.55,size:0.5+r()*1.5,branchData:bd,sway:r()*Math.PI*2});
+    }
+    return trees;
+  }
+
+  draw(){
+    const ctx=this.ctx,w=this.w,h=this.h;
+    if(!w||!h){requestAnimationFrame(()=>this.draw());return;}
+    ctx.clearRect(0,0,w,h);
+    ctx.save();ctx.translate(this.offsetX,this.offsetY);ctx.scale(this.scale,this.scale);
+    this.drawSky(ctx,w,h);
+    this.drawDistantHills(ctx,w,h);
+    this.drawGround(ctx,w,h);
+    this.drawDeadTrees(ctx);
+    this.drawGardenItems(ctx);
+    if(app&&app.placementMode) this.drawPlacementPreview(ctx,w,h);
+    ctx.restore();
+    if(this.hoveredItem&&!this.hoveredItem.isPending){
+      ctx.fillStyle='rgba(0,0,0,0.8)';
+      const label=this.hoveredItem.taskTitle||'';
+      ctx.font='13px "Microsoft YaHei",sans-serif';
+      const m=ctx.measureText(label);
+      ctx.fillRect(10,h-40,m.width+20,26);
+      ctx.fillStyle='#f8e888';ctx.fillText(label,20,h-22);
+    }
+    this.animPhase+=0.006;
+    requestAnimationFrame(()=>this.draw());
+  }
+
+  // ---- Bright grassland scene ----
+  drawSky(ctx,w,h){
+    const sx=-w*2,sw=w*5;
+    const grad=ctx.createLinearGradient(0,0,0,h*0.48);
+    grad.addColorStop(0,'#6898d8');grad.addColorStop(0.3,'#90c0e8');grad.addColorStop(0.7,'#b8d8f0');grad.addColorStop(1,'#d0e8d0');
+    ctx.fillStyle=grad;ctx.fillRect(sx,0,sw,h*0.48);
+    // Soft clouds
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    for(let i=0;i<8;i++){
+      const cx=sx+(i*237+80)%sw,cy=h*0.06+(i*73)%(h*0.2);
+      ctx.beginPath();ctx.ellipse(cx,cy,50+(i%4)*30,15+(i%3)*10,0,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.ellipse(cx+30,cy+8,40,12,0.2,0,Math.PI*2);ctx.fill();
+    }
+  }
+  drawDistantHills(ctx,w,h){
+    const sx=-w*2,ex=w*3;
+    // Back hills — soft green
+    ctx.fillStyle='#7aaa50';
+    ctx.beginPath();ctx.moveTo(sx,h*0.48);
+    for(let x=sx;x<=ex;x+=30) ctx.lineTo(x,h*0.38+Math.sin(x*0.007)*h*0.07+Math.sin(x*0.018)*h*0.025);
+    ctx.lineTo(ex,h*0.58);ctx.lineTo(sx,h*0.58);ctx.fill();
+    // Mid hills — brighter green
+    ctx.fillStyle='#8ab858';
+    ctx.beginPath();ctx.moveTo(sx,h*0.50);
+    for(let x=sx;x<=ex;x+=50) ctx.lineTo(x,h*0.42+Math.sin(x*0.005+1)*h*0.06);
+    ctx.lineTo(ex,h*0.60);ctx.lineTo(sx,h*0.60);ctx.fill();
+    // Near hills — warm green
+    ctx.fillStyle='#90c060';
+    ctx.beginPath();ctx.moveTo(sx,h*0.52);
+    for(let x=sx;x<=ex;x+=60) ctx.lineTo(x,h*0.45+Math.sin(x*0.004+2)*h*0.04);
+    ctx.lineTo(ex,h*0.62);ctx.lineTo(sx,h*0.62);ctx.fill();
+  }
+  drawGround(ctx,w,h){
+    const sx=-w*2,sw=w*5;
+    // Grass gradient — bright greens
+    const grad=ctx.createLinearGradient(0,h*0.45,0,h);
+    grad.addColorStop(0,'#8ab848');grad.addColorStop(0.15,'#7aac38');grad.addColorStop(0.4,'#6a9830');grad.addColorStop(0.7,'#5a8028');grad.addColorStop(1,'#4a6820');
+    ctx.fillStyle=grad;ctx.fillRect(sx,h*0.45,sw,h*0.55);
+    // Soil texture dots
+    ctx.fillStyle='rgba(0,0,0,0.04)';
+    for(let i=0;i<600;i++){const gx=sx+(i*137.5+50)%sw,gy=h*0.48+(i*97.3+30)%(h*0.5);ctx.fillRect(gx,gy,2+(i%3),1);}
+    // Small rocks (gray-green for grassland)
+    ctx.fillStyle='#7a8860';
+    for(let i=0;i<60;i++){const rx=sx+(i*173+80)%sw,ry=h*0.5+(i*211+40)%(h*0.45);ctx.beginPath();ctx.ellipse(rx,ry,5+(i%10),2+(i%6),i*0.7,0,Math.PI*2);ctx.fill();}
+    // Rich grass tufts — more visible
+    ctx.fillStyle='rgba(100,160,40,0.22)';
+    for(let i=0;i<200;i++){const gx=sx+(i*203+30)%sw,gy=h*0.47+(i*157+20)%(h*0.48);ctx.fillRect(gx,gy,10+(i%14),2.5);}
+    // Lighter grass highlights
+    ctx.fillStyle='rgba(140,200,60,0.15)';
+    for(let i=0;i<120;i++){const gx=sx+(i*317+90)%sw,gy=h*0.465+(i*251+10)%(h*0.3);ctx.fillRect(gx,gy,6+(i%8),2);}
+    // Small wildflowers scattered on the grass
+    ctx.fillStyle='rgba(240,240,200,0.12)';
+    for(let i=0;i<40;i++){const fx=sx+(i*277+55)%sw,fy=h*0.47+(i*191+15)%(h*0.4);ctx.beginPath();ctx.arc(fx,fy,1.5+(i%3),0,Math.PI*2);ctx.fill();}
+  }
+
+  drawDeadTrees(ctx){
+    if(!app)return;
+    const data=app.data;
+    if(!data.deadTrees||data.deadTrees.length===0){data.deadTrees=this.generateDeadTrees();saveData(data);}
+    for(const tree of data.deadTrees){
+      const tx=tree.x*this.w,ty=tree.y*this.h;
+      this.drawDeadTree(ctx,tx,ty,tree.size,tree.branchData,tree.sway);
+    }
+  }
+  drawDeadTree(ctx,x,y,size,branchData,sway){
+    const s=size*55;
+    ctx.strokeStyle='#2a1e14';ctx.lineWidth=3*size;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-s*0.7);ctx.stroke();
+    ctx.lineWidth=1.5*size;
+    for(const bd of branchData){
+      const angle=-Math.PI/2+bd.angleOffset*Math.PI+Math.sin(sway+bd.angleOffset*5)*0.06;
+      const len=s*bd.lenFactor,bx=x,by=y-s*0.4+bd.angleOffset*s*0.3;
+      ctx.beginPath();ctx.moveTo(bx,by);
+      const ex=bx+Math.cos(angle)*len,ey=by+Math.sin(angle)*len;
+      ctx.lineTo(ex,ey);ctx.stroke();
+      if(bd.hasSub){
+        const sa=angle+0.5,sl=len*bd.subLen,mx=bx*0.3+ex*0.7,my=by*0.3+ey*0.7;
+        ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx+Math.cos(sa)*sl,my+Math.sin(sa)*sl);ctx.stroke();
+      }
+    }
+  }
+
+  drawGardenItems(ctx){
+    if(!app)return;
+    for(const item of app.data.gardenItems){
+      const ix=item.x*this.w,iy=item.y*this.h;
+      switch(item.type){
+        case'flower':this.drawFlower(ctx,ix,iy,item.species||0);break;
+        case'coffin':this.drawCoffin(ctx,ix,iy);break;
+        case'tombstone':this.drawTombstone(ctx,ix,iy);break;
+        case'tree':this.drawLiveTree(ctx,ix,iy,item.species||0);break;
+        case'animal':this.drawAnimal(ctx,ix,iy,item.animalType||'rabbit');break;
+        case'special_flower':this.drawSpecialFlower(ctx,ix,iy,item.species||0);break;
+      }
+    }
+  }
+
+  // ---- Real flower species with recognizable features ----
+  drawFlower(ctx,x,y,speciesIdx=0){
+    const sp=FLOWER_SPECIES[speciesIdx%FLOWER_SPECIES.length];
+    const s=sp.size+Math.sin(this.animPhase*1.5+x)*0.5;
+    const sway=Math.sin(this.animPhase*1.2+x)*0.05;
+
+    // Stem (thicker for sunflower)
+    const stemW=speciesIdx===1?3:2;
+    ctx.strokeStyle=sp.leafColor;ctx.lineWidth=stemW;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-s*1.8);ctx.stroke();
+    // Leaves
+    ctx.fillStyle=sp.leafColor;
+    ctx.beginPath();ctx.ellipse(x-5,y-s*0.9,7,3,-0.3,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(x+5,y-s*0.6,6,2.5,0.3,0,Math.PI*2);ctx.fill();
+
+    switch(speciesIdx){
+      case 0: this.drawRose(ctx,x,y,s,sp,sway); break;
+      case 1: this.drawSunflower(ctx,x,y,s,sp); break;
+      case 2: this.drawLavender(ctx,x,y,s,sp); break;
+      case 3: this.drawCherryBlossom(ctx,x,y,s,sp,sway); break;
+      case 4: this.drawDaisy(ctx,x,y,s,sp); break;
+      case 5: this.drawTulipFlower(ctx,x,y,s,sp); break;
+      case 6: this.drawBluebellFlower(ctx,x,y,s,sp); break;
+      default: this.drawGenericFlower(ctx,x,y,s,sp,sway);
+    }
+  }
+
+  // 蔷薇 (Rose) — layered concentric petals, spiral center
+  drawRose(ctx,x,y,s,sp,sway){
+    const cx=x,cy=y-s*1.8;
+    // Outer petals — large rounded shapes
+    for(let i=0;i<5;i++){
+      const a=(i/5)*Math.PI*2+sway;
+      ctx.fillStyle=sp.colors[0];
+      ctx.beginPath();ctx.arc(cx+Math.cos(a)*s*0.45,cy+Math.sin(a)*s*0.35,s*0.55,0,Math.PI*2);ctx.fill();
+    }
+    // Middle layer
+    for(let i=0;i<5;i++){
+      const a=(i/5)*Math.PI*2+0.3+sway*1.3;
+      ctx.fillStyle=sp.colors[1];
+      ctx.beginPath();ctx.arc(cx+Math.cos(a)*s*0.25,cy+Math.sin(a)*s*0.2,s*0.38,0,Math.PI*2);ctx.fill();
+    }
+    // Inner spiral
+    ctx.fillStyle=sp.colors[2];
+    ctx.beginPath();ctx.arc(cx,cy,s*0.28,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,240,200,0.5)';
+    ctx.beginPath();ctx.arc(cx-s*0.06,cy-s*0.06,s*0.1,0,Math.PI*2);ctx.fill();
+  }
+
+  // 向日葵 (Sunflower) — large dark center, ring of yellow petals
+  drawSunflower(ctx,x,y,s,sp){
+    const cx=x,cy=y-s*1.9;
+    // Petals radiating outward
+    for(let i=0;i<14;i++){
+      const a=(i/14)*Math.PI*2+Math.sin(this.animPhase*1.5+x+i)*0.08;
+      ctx.fillStyle=sp.colors[i%3];
+      ctx.beginPath();
+      const px=cx+Math.cos(a)*s*0.25,py=cy+Math.sin(a)*s*0.25;
+      ctx.ellipse(px+Math.cos(a)*s*0.4,py+Math.sin(a)*s*0.4,s*0.55,s*0.18,a,0,Math.PI*2);ctx.fill();
+    }
+    // Dark center
+    ctx.fillStyle='#5a3a10';ctx.beginPath();ctx.arc(cx,cy,s*0.45,0,Math.PI*2);ctx.fill();
+    // Center texture dots
+    ctx.fillStyle='#3a2010';
+    for(let i=0;i<12;i++){
+      const a=(i/12)*Math.PI*2+0.2;
+      ctx.beginPath();ctx.arc(cx+Math.cos(a)*s*0.2,cy+Math.sin(a)*s*0.18,s*0.08,0,Math.PI*2);ctx.fill();
+    }
+    ctx.fillStyle='#6a4a18';ctx.beginPath();ctx.arc(cx,cy,s*0.35,0,Math.PI*2);ctx.fill();
+  }
+
+  // 薰衣草 (Lavender) — spike shape
+  drawLavender(ctx,x,y,s,sp){
+    const sway=Math.sin(this.animPhase*1.5+x)*0.06;
+    for(let i=0;i<6;i++){
+      ctx.fillStyle=sp.colors[i%3];
+      const rx=x+sway*3+Math.sin(i*1.1)*2.5;
+      ctx.beginPath();ctx.arc(rx,y-s*1.5-i*3.5,3+Math.max(0,(3-i)*0.8),0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // 樱花 (Cherry blossom) — 5 notched petals, pale pink
+  drawCherryBlossom(ctx,x,y,s,sp,sway){
+    const cx=x,cy=y-s*1.7;
+    for(let i=0;i<5;i++){
+      const a=(i/5)*Math.PI*2+sway;
+      const px=cx+Math.cos(a)*s*0.4,py=cy+Math.sin(a)*s*0.4;
+      ctx.fillStyle=sp.colors[i%3];
+      ctx.beginPath();
+      // Notched petal shape
+      ctx.moveTo(cx+Math.cos(a-0.15)*s*0.08,cy+Math.sin(a-0.15)*s*0.08);
+      ctx.quadraticCurveTo(px+Math.cos(a-0.3)*s*0.5,py+Math.sin(a-0.3)*s*0.5,px,py);
+      ctx.quadraticCurveTo(px+Math.cos(a+0.3)*s*0.5,py+Math.sin(a+0.3)*s*0.5,cx+Math.cos(a+0.15)*s*0.08,cy+Math.sin(a+0.15)*s*0.08);
+      ctx.fill();
+    }
+    // Tiny center
+    ctx.fillStyle='#f8e0c0';ctx.beginPath();ctx.arc(cx,cy,s*0.12,0,Math.PI*2);ctx.fill();
+  }
+
+  // 雏菊 (Daisy) — white petals, large yellow center
+  drawDaisy(ctx,x,y,s,sp){
+    const cx=x,cy=y-s*1.7;
+    for(let i=0;i<11;i++){
+      const a=(i/11)*Math.PI*2+Math.sin(this.animPhase*1.5+x+i)*0.06;
+      ctx.fillStyle=sp.colors[i%3];
+      ctx.beginPath();
+      ctx.ellipse(cx+Math.cos(a)*s*0.35,cy+Math.sin(a)*s*0.35,s*0.5,s*0.16,a,0,Math.PI*2);ctx.fill();
+    }
+    // Large yellow center
+    ctx.fillStyle='#f0c830';ctx.beginPath();ctx.arc(cx,cy,s*0.38,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#e8b020';ctx.beginPath();ctx.arc(cx,cy,s*0.25,0,Math.PI*2);ctx.fill();
+  }
+
+  // 郁金香 (Tulip) — cup shape
+  drawTulipFlower(ctx,x,y,s,sp){
+    const cx=x,cy=y-s*1.5;
+    ctx.fillStyle=sp.colors[0];
+    ctx.beginPath();ctx.moveTo(cx-s*0.55,cy);ctx.quadraticCurveTo(cx-s*0.6,cy-s*0.7,cx,cy-s*0.9);
+    ctx.quadraticCurveTo(cx+s*0.6,cy-s*0.7,cx+s*0.55,cy);ctx.closePath();ctx.fill();
+    // Inner petal highlight
+    ctx.fillStyle=sp.colors[1];
+    ctx.beginPath();ctx.moveTo(cx-s*0.2,cy);ctx.quadraticCurveTo(cx-s*0.1,cy-s*0.5,cx,cy-s*0.7);
+    ctx.quadraticCurveTo(cx+s*0.1,cy-s*0.5,cx+s*0.2,cy);ctx.fill();
+    ctx.fillStyle=sp.colors[2];ctx.beginPath();ctx.arc(cx,cy-s*0.45,s*0.2,0,Math.PI*2);ctx.fill();
+  }
+
+  // 蓝铃花 (Bluebell) — hanging bells
+  drawBluebellFlower(ctx,x,y,s,sp){
+    const sway=Math.sin(this.animPhase*1.5+x)*0.04;
+    for(let i=0;i<4;i++){
+      const bx=x+(i-1.5)*s*0.4+sway,by=y-s*1.2-i*2;
+      ctx.fillStyle=sp.colors[i%3];
+      ctx.beginPath();ctx.moveTo(bx-s*0.35,by);ctx.quadraticCurveTo(bx,by+s*0.7,bx+s*0.35,by);ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=0.8;
+      ctx.beginPath();ctx.moveTo(bx-s*0.2,by+s*0.3);ctx.quadraticCurveTo(bx,by+s*0.55,bx+s*0.2,by+s*0.3);ctx.stroke();
+    }
+  }
+
+  // Generic flower fallback
+  drawGenericFlower(ctx,x,y,s,sp,sway){
+    const cx=x,cy=y-s*1.8;
+    for(let l=0;l<sp.layers;l++){
+      const layerS=s*(1-l*0.3);
+      for(let i=0;i<sp.petals;i++){
+        const angle=(i/sp.petals)*Math.PI*2+l*0.3+sway;
+        const px=cx+Math.cos(angle)*layerS*0.55,py=cy+Math.sin(angle)*layerS*0.55;
+        ctx.fillStyle=sp.colors[(i+l)%sp.colors.length];
+        ctx.beginPath();ctx.arc(px,py,layerS*0.42,0,Math.PI*2);ctx.fill();
+      }
+    }
+    ctx.fillStyle='#f8e050';ctx.beginPath();ctx.arc(cx,cy,s*0.25,0,Math.PI*2);ctx.fill();
+  }
+
+  drawSpecialFlower(ctx,x,y,speciesIdx=0){
+    // Golden/glowing special flower for achievements
+    this.drawFlower(ctx,x,y,speciesIdx);
+    ctx.fillStyle='rgba(255,220,80,0.3)';
+    ctx.beginPath();ctx.arc(x,y-22,18,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,220,80,0.5)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(x,y-22,16+Math.sin(this.animPhase*1.5)*1.5,0,Math.PI*2);ctx.stroke();
+  }
+
+  // ---- Real tree species (large, recognizable) ----
+  drawLiveTree(ctx,x,y,speciesIdx=0){
+    const sp=TREE_SPECIES[speciesIdx%TREE_SPECIES.length];
+    const s=sp.size;
+    const sway=Math.sin(this.animPhase*0.7+x)*0.8;
+
+    switch(sp.canopyShape){
+      case'triangle': this.drawPineTree(ctx,x,y,s,sp); break;
+      case'weeping': this.drawWeepingWillow(ctx,x,y,s,sp,sway); break;
+      case'banyan': this.drawBanyanTree(ctx,x,y,s,sp,sway); break;
+      default: this.drawRoundTree(ctx,x,y,s,sp,sway);
+    }
+  }
+
+  drawRoundTree(ctx,x,y,s,sp,sway){
+    // Thick trunk
+    ctx.fillStyle=sp.trunkColor;
+    ctx.fillRect(x-s*0.15,y-s*0.8,s*0.3,s*0.8);
+    // Root flare
+    ctx.beginPath();ctx.moveTo(x-s*0.18,y);ctx.lineTo(x-s*0.08,y-s*0.25);ctx.lineTo(x+s*0.08,y-s*0.25);ctx.lineTo(x+s*0.18,y);ctx.fill();
+    // Canopy layers
+    ctx.fillStyle=sp.canopyColors[0];ctx.beginPath();ctx.arc(x+sway,y-s*1.2,s*0.9,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[1];ctx.beginPath();ctx.arc(x-8+sway*1.3,y-s*0.85,s*0.65,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[2];ctx.beginPath();ctx.arc(x+9+sway*1.3,y-s*0.95,s*0.6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[0];ctx.beginPath();ctx.arc(x+sway*1.8,y-s*1.6,s*0.5,0,Math.PI*2);ctx.fill();
+    // Texture highlights
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    for(let i=0;i<6;i++){
+      const a=(i/6)*Math.PI*2+0.4;
+      ctx.beginPath();ctx.arc(x+sway+Math.cos(a)*s*0.5,y-s*1.0+Math.sin(a)*s*0.4,s*0.2,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  drawPineTree(ctx,x,y,s,sp){
+    // Straight trunk
+    ctx.fillStyle=sp.trunkColor;
+    ctx.fillRect(x-s*0.12,y-s*0.6,s*0.24,s*0.6);
+    // Triangular canopy tiers
+    ctx.fillStyle=sp.canopyColors[0];
+    ctx.beginPath();ctx.moveTo(x,y-s*2.2);ctx.lineTo(x-s*0.9,y-s*0.3);ctx.lineTo(x+s*0.9,y-s*0.3);ctx.closePath();ctx.fill();
+    ctx.fillStyle=sp.canopyColors[1];
+    ctx.beginPath();ctx.moveTo(x,y-s*1.7);ctx.lineTo(x-s*0.65,y-s*0.3);ctx.lineTo(x+s*0.65,y-s*0.3);ctx.closePath();ctx.fill();
+    ctx.fillStyle=sp.canopyColors[2];
+    ctx.beginPath();ctx.moveTo(x,y-s*1.1);ctx.lineTo(x-s*0.4,y-s*0.3);ctx.lineTo(x+s*0.4,y-s*0.3);ctx.closePath();ctx.fill();
+  }
+
+  // 柳树 — drooping branches
+  drawWeepingWillow(ctx,x,y,s,sp,sway){
+    ctx.fillStyle=sp.trunkColor;
+    ctx.fillRect(x-s*0.12,y-s*0.7,s*0.24,s*0.7);
+    // Main canopy
+    ctx.fillStyle=sp.canopyColors[0];ctx.beginPath();ctx.arc(x+sway,y-s*1.3,s*0.7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[1];ctx.beginPath();ctx.arc(x+sway*1.2,y-s*1.5,s*0.5,0,Math.PI*2);ctx.fill();
+    // Drooping branches (deterministic, no Math.random in draw loop)
+    ctx.strokeStyle=sp.canopyColors[2];ctx.lineWidth=1.2;ctx.lineCap='round';
+    for(let i=0;i<12;i++){
+      const bx=x-s*0.5+(i/11)*s*1.0;
+      const seed=((i*137+Math.floor(x*100)+Math.floor(y*100))%1000)/1000;
+      const by=y-s*1.2-seed*s*0.3;
+      const droop=s*0.5+seed*s*0.7;
+      ctx.beginPath();ctx.moveTo(bx,by);
+      ctx.quadraticCurveTo(bx+sway*2,by+droop*0.4,bx+sway*3+Math.sin(i)*5,by+droop);ctx.stroke();
+    }
+  }
+
+  // 榕树 — wide canopy with aerial roots
+  drawBanyanTree(ctx,x,y,s,sp,sway){
+    // Thick main trunk
+    ctx.fillStyle=sp.trunkColor;
+    ctx.fillRect(x-s*0.16,y-s*0.5,s*0.32,s*0.5);
+    // Multiple thin aerial roots (deterministic)
+    ctx.strokeStyle='#6a4830';ctx.lineWidth=1;ctx.lineCap='round';
+    for(let i=0;i<6;i++){
+      const rx=x-s*0.35+(i/5)*s*0.7;
+      const seed=((i*211+Math.floor(x*100))%1000)/1000;
+      ctx.beginPath();ctx.moveTo(rx,y-s*0.35-seed*s*0.1);
+      ctx.quadraticCurveTo(rx+Math.sin(i)*3,y-s*0.1,rx+Math.sin(i*2)*4,y+5);ctx.stroke();
+    }
+    // Wide spreading canopy
+    ctx.fillStyle=sp.canopyColors[0];ctx.beginPath();ctx.ellipse(x+sway,y-s*1.1,s*1.05,s*0.8,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[1];ctx.beginPath();ctx.ellipse(x-12+sway,y-s*0.95,s*0.65,s*0.55,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[2];ctx.beginPath();ctx.ellipse(x+14+sway,y-s*1.05,s*0.7,s*0.55,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=sp.canopyColors[0];ctx.beginPath();ctx.ellipse(x+sway*1.5,y-s*1.5,s*0.55,s*0.4,0,0,Math.PI*2);ctx.fill();
+    // Canopy texture
+    ctx.fillStyle='rgba(255,255,255,0.05)';
+    for(let i=0;i<8;i++){
+      const a=(i/8)*Math.PI*2+0.3;
+      ctx.beginPath();ctx.arc(x+sway+Math.cos(a)*s*0.5,y-s*0.9+Math.sin(a)*s*0.3,s*0.18,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // ---- Animal visitors ----
+  drawAnimal(ctx,x,y,type){
+    const s=14;
+    ctx.save();ctx.translate(x,y-s);
+    switch(type){
+      case'rabbit':
+        ctx.fillStyle='#e8d8c8';ctx.beginPath();ctx.ellipse(0,0,s*0.5,s*0.4,0,0,Math.PI*2);ctx.fill(); // body
+        ctx.beginPath();ctx.arc(-s*0.3,-s*0.4,s*0.3,0,Math.PI*2);ctx.fill(); // head
+        ctx.fillStyle='#d8c8b8';ctx.beginPath();ctx.ellipse(-s*0.6,-s*0.6,s*0.15,s*0.35,-0.3,0,Math.PI*2);ctx.fill(); // ear
+        ctx.beginPath();ctx.ellipse(-s*0.2,-s*0.65,s*0.15,s*0.35,0.3,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#333';ctx.beginPath();ctx.arc(-s*0.4,-s*0.45,s*0.06,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#f0c0b0';ctx.beginPath();ctx.arc(-s*0.35,-s*0.38,s*0.05,0,Math.PI*2);ctx.fill();
+      break;
+      case'squirrel':
+        ctx.fillStyle='#c89860';ctx.beginPath();ctx.ellipse(0,0,s*0.45,s*0.3,0,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(-s*0.3,-s*0.3,s*0.25,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#d8a870';ctx.beginPath();ctx.ellipse(s*0.2,-s*0.6,s*0.2,s*0.4,0.8,0,Math.PI*2);ctx.fill(); // tail
+        ctx.fillStyle='#333';ctx.beginPath();ctx.arc(-s*0.4,-s*0.35,s*0.05,0,Math.PI*2);ctx.fill();
+      break;
+      case'cat':
+        ctx.fillStyle='#f8d8a0';ctx.beginPath();ctx.ellipse(0,0,s*0.5,s*0.35,0,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(-s*0.35,-s*0.35,s*0.28,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.moveTo(-s*0.5,-s*0.5);ctx.lineTo(-s*0.55,-s*0.85);ctx.lineTo(-s*0.35,-s*0.55);ctx.fill(); // ear
+        ctx.beginPath();ctx.moveTo(-s*0.2,-s*0.5);ctx.lineTo(-s*0.15,-s*0.85);ctx.lineTo(-s*0.05,-s*0.55);ctx.fill();
+        ctx.strokeStyle='#d8b870';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(s*0.4,-s*0.1);ctx.quadraticCurveTo(s*0.7,s*0.2,s*0.9,s*0.4);ctx.stroke(); // tail
+      break;
+      case'dog':
+        ctx.fillStyle='#e8c898';ctx.beginPath();ctx.ellipse(0,0,s*0.5,s*0.35,0,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(s*0.3,-s*0.25,s*0.3,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#c89860';ctx.beginPath();ctx.ellipse(s*0.5,-s*0.55,s*0.12,s*0.25,-0.2,0,Math.PI*2);ctx.fill(); // floppy ear
+        ctx.fillStyle='#333';ctx.beginPath();ctx.arc(s*0.4,-s*0.3,s*0.05,0,Math.PI*2);ctx.fill();
+      break;
+      case'bird':
+        ctx.fillStyle='#f0d870';ctx.beginPath();ctx.ellipse(0,0,s*0.35,s*0.25,0,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(s*0.3,-s*0.1,s*0.2,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#f87040';ctx.beginPath();ctx.moveTo(s*0.45,-s*0.1);ctx.lineTo(s*0.7,-s*0.05);ctx.lineTo(s*0.45,-s*0.02);ctx.fill();
+        ctx.fillStyle='#333';ctx.beginPath();ctx.arc(s*0.35,-s*0.15,s*0.04,0,Math.PI*2);ctx.fill();
+      break;
+    }
+    ctx.restore();
+  }
+
+  drawCoffin(ctx,x,y){
+    const w=32,h=18;
+    ctx.fillStyle='#5a3828';ctx.strokeStyle='#3a2010';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x-w*0.3,y-h);ctx.lineTo(x+w*0.3,y-h);ctx.lineTo(x+w*0.5,y);ctx.lineTo(x-w*0.5,y);ctx.closePath();
+    ctx.fill();ctx.stroke();
+    ctx.strokeStyle='#8a6850';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,y-h+2);ctx.lineTo(x,y-2);ctx.moveTo(x-5,y-h*0.5);ctx.lineTo(x+5,y-h*0.5);ctx.stroke();
+  }
+  drawTombstone(ctx,x,y){
+    const w=24,h=32;
+    ctx.fillStyle='#7a7a80';ctx.strokeStyle='#4a4a50';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x-w*0.5,y);ctx.lineTo(x-w*0.5,y-h*0.7);
+    ctx.quadraticCurveTo(x-w*0.5,y-h,x,y-h);ctx.quadraticCurveTo(x+w*0.5,y-h,x+w*0.5,y-h*0.7);
+    ctx.lineTo(x+w*0.5,y);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle='#4a4a50';ctx.font='8px serif';ctx.textAlign='center';ctx.fillText('RIP',x,y-h*0.35);
+  }
+  drawPlacementPreview(ctx,w,h){
+    const sx=-w*2,sw=w*5,sh=h*3;
+    ctx.strokeStyle='rgba(220,190,100,0.18)';ctx.lineWidth=0.5;
+    for(let gx=sx;gx<=sx+sw;gx+=40){ctx.beginPath();ctx.moveTo(gx,-h);ctx.lineTo(gx,h*2);ctx.stroke();}
+    for(let gy=-h;gy<=sh;gy+=40){ctx.beginPath();ctx.moveTo(sx,gy);ctx.lineTo(sx+sw,gy);ctx.stroke();}
+    // Highlight cursor area
+    if(this.hoveredItem&&!this.hoveredItem.isPending){
+      ctx.strokeStyle='rgba(255,220,100,0.5)';ctx.lineWidth=2;
+      const ix=this.hoveredItem.x*w,iy=(this.hoveredItem.y||0.5)*h;
+      ctx.beginPath();ctx.arc(ix,iy,30,0,Math.PI*2);ctx.stroke();
+    }
+  }
+}
+
+// ============ Application ============
+class App{
+  constructor(){
+    this.data=loadData();
+    this.gardenRenderer=null;
+    this.placementMode=false;
+    this.currentPlacement=null;
+    this.currentExtendTaskId=null;
+    this.currentFilter='all';
+    this.editingTaskId=null; // track which task is being edited
+    this.init();
+  }
+
+  init(){
+    const canvas=document.getElementById('garden-canvas');
+    this.gardenRenderer=new GardenRenderer(canvas);
+
+    document.querySelectorAll('#nav button').forEach(btn=>{
+      btn.addEventListener('click',()=>this.switchView(btn.dataset.view));
+    });
+
+    document.querySelectorAll('#task-toolbar button[data-filter]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        document.querySelectorAll('#task-toolbar button[data-filter]').forEach(b=>b.classList.remove('filter-active'));
+        btn.classList.add('filter-active');this.currentFilter=btn.dataset.filter;this.renderTaskList();
+      });
+    });
+
+    document.getElementById('add-type').addEventListener('change',(e)=>{
+      const isLong=e.target.value.startsWith('long');
+      document.getElementById('long-options').classList.toggle('hidden',!isLong);
+      document.getElementById('custom-days-wrap').classList.toggle('hidden',e.target.value!=='long-cumulative');
+    });
+    document.getElementById('add-period').addEventListener('change',(e)=>{
+      document.getElementById('custom-days-wrap').classList.toggle('hidden',e.target.value!=='custom');
+    });
+
+    this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+    setInterval(()=>{this.checkOverdueTasks();this.checkDailyTreeReward();},30000);
+    // Check on init (in case 23:59 passed while away)
+    setTimeout(()=>this.checkDailyTreeReward(),2000);
+
+    const now=new Date();now.setHours(23,59,0,0);
+    document.getElementById('add-deadline').value=now.toISOString().slice(0,16);
+
+    requestAnimationFrame(()=>this.gardenRenderer.resize());
+  }
+
+  // ========== Navigation ==========
+  switchView(viewName){
+    document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active'));
+    document.querySelector(`#nav button[data-view="${viewName}"]`)?.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    const vm={garden:'garden-view',tasks:'task-view',achievements:'achievements-view'};
+    document.getElementById(vm[viewName])?.classList.add('active');
+    if(viewName==='garden'){
+      this.gardenRenderer?.resize();this.updatePlaceQueue();
+      const hint=document.getElementById('garden-hint');
+      if(!this.placementMode&&this.data.pendingPlacements.length>0){
+        hint.textContent='📦 有待放置物品！点击右侧队列「开始放置」或直接点物品 | 滚轮缩放';
+      }else if(!this.placementMode){
+        hint.textContent='🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置';
+      }
+    }
+    if(viewName==='tasks') this.renderTaskList();
+    if(viewName==='achievements') this.renderAchievements();
+  }
+
+  // ========== Modals & Toast ==========
+  openModal(id){document.getElementById(id).classList.remove('hidden');}
+  closeModal(id){
+    document.getElementById(id).classList.add('hidden');
+    if(id==='modal-add'&&this.editingTaskId) this.resetAddForm();
+  }
+  toast(msg,type='info'){
+    const c=document.getElementById('toast-container');
+    const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=msg;
+    c.appendChild(el);setTimeout(()=>el.remove(),3200);
+  }
+
+  // ========== Confetti ==========
+  spawnConfetti(count=60){
+    const overlay=document.getElementById('confetti-overlay');
+    const colors=['#f8d878','#f0a0b8','#a8e878','#78c8f8','#f8b878','#c898f8','#f8f080','#f87060'];
+    for(let i=0;i<count;i++){
+      const p=document.createElement('div');p.className='confetti-piece';
+      p.style.left=Math.random()*100+'%';p.style.top='-10px';
+      p.style.width=(8+Math.random()*10)+'px';p.style.height=(8+Math.random()*10)+'px';
+      p.style.background=colors[Math.floor(Math.random()*colors.length)];
+      p.style.borderRadius=Math.random()>0.5?'50%':'2px';
+      p.style.animationDuration=(2+Math.random()*3)+'s';p.style.animationDelay=Math.random()*0.8+'s';
+      overlay.appendChild(p);setTimeout(()=>p.remove(),4000);
+    }
+  }
+
+  spawnPetals(x,y,count=25){
+    const overlay=document.getElementById('particle-overlay');
+    const colors=['#f0a0b8','#f8c8d8','#f8f0e8','#e87080','#c8a8e8','#ffd878','#f8d8b0'];
+    for(let i=0;i<count;i++){
+      const petal=document.createElement('div');petal.className='petal';
+      petal.style.left=(x+(Math.random()-0.5)*120)+'px';petal.style.top=(y+(Math.random()-0.5)*50)+'px';
+      petal.style.width=(5+Math.random()*8)+'px';petal.style.height=(5+Math.random()*8)+'px';
+      petal.style.background=colors[Math.floor(Math.random()*colors.length)];
+      petal.style.animationDuration=(2+Math.random()*3)+'s';petal.style.animationDelay=Math.random()*0.5+'s';
+      overlay.appendChild(petal);setTimeout(()=>petal.remove(),4000);
+    }
+  }
+
+  randomEncouragement(){
+    return ENCOURAGEMENTS[Math.floor(Math.random()*ENCOURAGEMENTS.length)];
+  }
+
+  // ========== Streak Tracking ==========
+  updateStreak(){
+    const a=this.data.achievements;
+    const today=todayStr();
+    const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+    const yestStr=fmtDate(yesterday);
+
+    if(a.lastCheckinDate===today) return;
+    if(a.lastCheckinDate===yestStr){
+      a.streak++;a.lastCheckinDate=today;
+    }else if(a.lastCheckinDate!==today){
+      a.streak=1;a.lastCheckinDate=today;
+    }
+    if(a.streak>a.bestStreak) a.bestStreak=a.streak;
+    saveData(this.data);
+  }
+
+  checkStreakMilestone(){
+    const s=this.data.achievements.streak;
+    if(s===7) return {type:'special_flower', species:1, name:'向日葵·七日之约', msg:'🔥 连续打卡7天！解锁特殊花朵：向日葵·七日之约'};
+    if(s===14) return {type:'special_flower', species:3, name:'樱花·两周之誓', msg:'🌟 连续打卡14天！解锁特殊花朵：樱花·两周之誓'};
+    if(s===30) return {type:'tree', species:1, name:'松树·一月之恒', msg:'👑 连续打卡30天！解锁特殊树种：松树·一月之恒'};
+    return null;
+  }
+
+  // ========== Task Management ==========
+  addTask(){
+    const title=document.getElementById('add-title').value.trim();
+    const deadline=document.getElementById('add-deadline').value;
+    const notes=document.getElementById('add-notes').value.trim();
+    const typeVal=document.getElementById('add-type').value;
+    if(!title){this.toast('请输入任务名称！','error');return;}
+    if(!deadline){this.toast('请设置截止时间！','error');return;}
+
+    let taskType='short',longPeriod=null,longDays=1,isCumulative=false;
+    if(typeVal==='long-single'){taskType='long';longPeriod=document.getElementById('add-period').value;}
+    else if(typeVal==='long-cumulative'){
+      taskType='long';isCumulative=true;longPeriod=document.getElementById('add-period').value;
+      longDays=longPeriod==='custom'?(parseInt(document.getElementById('add-custom-days').value)||7):({week:7,month:30,quarter:90}[longPeriod]||7);
+    }
+
+    if(this.editingTaskId){
+      // Edit mode
+      const task=this.data.tasks.find(t=>t.id===this.editingTaskId);
+      if(!task)return;
+      task.title=title;task.deadline=new Date(deadline).toISOString();task.notes=notes;
+      task.type=taskType;task.longPeriod=longPeriod;task.longDays=longDays;task.isCumulative=isCumulative;
+      if(!task.isCumulative) task.checkedDays=[];
+      saveData(this.data);
+      this.closeModal('modal-add');this.renderTaskList();this.updateStats();
+      this.toast('✅ 任务已更新！','success');
+      this.editingTaskId=null;
+      this.resetAddForm();
+    }else{
+      // Add mode
+      const task={id:uid(),title,deadline:new Date(deadline).toISOString(),notes,type:taskType,longPeriod,longDays,isCumulative,checkedDays:[],status:'pending',extensionDeadline:null,hasExtended:false,createdAt:new Date().toISOString()};
+      this.data.tasks.push(task);saveData(this.data);
+      this.closeModal('modal-add');this.renderTaskList();this.updateStats();
+      this.toast('✅ 任务创建成功！','success');
+      this.resetAddForm();
+    }
+  }
+
+  editTask(taskId){
+    const task=this.data.tasks.find(t=>t.id===taskId);
+    if(!task)return;
+    this.editingTaskId=taskId;
+    document.getElementById('add-title').value=task.title;
+    document.getElementById('add-deadline').value=new Date(task.deadline).toISOString().slice(0,16);
+    document.getElementById('add-notes').value=task.notes||'';
+    if(task.type==='short') document.getElementById('add-type').value='short';
+    else if(task.isCumulative) document.getElementById('add-type').value='long-cumulative';
+    else document.getElementById('add-type').value='long-single';
+    if(task.type==='long'){
+      document.getElementById('long-options').classList.remove('hidden');
+      document.getElementById('add-period').value=task.longPeriod||'week';
+      if(task.longPeriod==='custom'){
+        document.getElementById('custom-days-wrap').classList.remove('hidden');
+        document.getElementById('add-custom-days').value=task.longDays||7;
+      }
+      if(task.isCumulative) document.getElementById('custom-days-wrap').classList.toggle('hidden',task.longPeriod!=='custom');
+    }
+    // Update modal UI
+    document.querySelector('#modal-add h2').textContent='✏️ 编辑任务';
+    document.querySelector('#modal-add .btn-primary').textContent='保存修改';
+    this.openModal('modal-add');
+  }
+
+  resetAddForm(){
+    this.editingTaskId=null;
+    document.getElementById('add-title').value='';document.getElementById('add-notes').value='';
+    const now=new Date();now.setHours(23,59,0,0);document.getElementById('add-deadline').value=now.toISOString().slice(0,16);
+    document.getElementById('add-type').value='short';document.getElementById('long-options').classList.add('hidden');
+    document.querySelector('#modal-add h2').textContent='📝 新建任务';
+    document.querySelector('#modal-add .btn-primary').textContent='确认创建';
+  }
+
+  checkIn(taskId,cardEl){
+    const task=this.data.tasks.find(t=>t.id===taskId);
+    if(!task||(task.status!=='pending'&&task.status!=='extended'))return;
+
+    const now=new Date();
+    const effDeadline=task.extensionDeadline||task.deadline;
+
+    if(task.isCumulative&&task.type==='long'){
+      const today=todayStr();
+      if(new Date()>new Date(effDeadline)){
+        if(!task.hasExtended){this.currentExtendTaskId=taskId;document.getElementById('extend-deadline').value=new Date(Date.now()+3600000).toISOString().slice(0,16);this.openModal('modal-extend');return;}
+        else{task.status='failed';this.handleTaskFail(task,cardEl);return;}
+      }
+      if(task.checkedDays.includes(today)){this.toast('今天已经打过卡了！','info');return;}
+      task.checkedDays.push(today);
+      if(task.checkedDays.length>=task.longDays){task.status='completed';this.handleTaskComplete(task,cardEl);}
+      else{saveData(this.data);this.renderTaskList();this.toast(`📅 已打卡 ${task.checkedDays.length}/${task.longDays} 天，继续加油！`,'success');}
+      return;
+    }
+
+    if(now<=new Date(effDeadline)){task.status='completed';this.handleTaskComplete(task,cardEl);}
+    else if(!task.hasExtended){this.currentExtendTaskId=taskId;document.getElementById('extend-deadline').value=new Date(now.getTime()+3600000).toISOString().slice(0,16);this.openModal('modal-extend');}
+    else{task.status='failed';this.handleTaskFail(task,cardEl);}
+  }
+
+  confirmExtend(){
+    const task=this.data.tasks.find(t=>t.id===this.currentExtendTaskId);if(!task)return;
+    const nd=document.getElementById('extend-deadline').value;
+    if(!nd){this.toast('请设置新的截止时间！','error');return;}
+    const extDate=new Date(nd);
+    if(extDate<=new Date(task.deadline)){this.toast('延期时间必须晚于原截止时间！','error');return;}
+    task.hasExtended=true;task.extensionDeadline=extDate.toISOString();task.status='extended';
+    saveData(this.data);this.closeModal('modal-extend');this.renderTaskList();
+    this.toast('⏰ 已延长时间，请尽快完成！','info');this.currentExtendTaskId=null;
+  }
+
+  declineExtend(){
+    const task=this.data.tasks.find(t=>t.id===this.currentExtendTaskId);if(!task)return;
+    task.status='failed';this.closeModal('modal-extend');this.currentExtendTaskId=null;
+    this.handleTaskFail(task);saveData(this.data);this.renderTaskList();this.updateStats();
+  }
+
+  handleTaskComplete(task,cardEl){
+    this.updateStreak();
+    saveData(this.data);
+
+    const difficulty=this.getDifficulty(task);
+    let flowerCount=task.type==='long'?Math.max(1,Math.round(1*difficulty)):1;
+    if(task.isCumulative) flowerCount+=2;
+
+    // Random flower species
+    const speciesIdx=Math.floor(Math.random()*FLOWER_SPECIES.length);
+
+    for(let i=0;i<flowerCount;i++){
+      this.data.pendingPlacements.push({id:uid(),type:'flower',taskId:task.id,taskTitle:task.title,species:speciesIdx});
+    }
+    this.data.stats.totalCompleted+=1;
+
+    // Check streak milestones
+    const milestone=this.checkStreakMilestone();
+    if(milestone){
+      this.data.pendingPlacements.push({id:uid(),type:milestone.type,taskId:'milestone',taskTitle:milestone.name,species:milestone.species,animalType:null});
+      setTimeout(()=>this.toast(milestone.msg,'encourage'),500);
+    }
+
+    // Check if long task completed → animal visitor
+    if(task.type==='long'){
+      const animals=['rabbit','squirrel','cat','dog','bird'];
+      const animal=animals[Math.floor(Math.random()*animals.length)];
+      this.data.pendingPlacements.push({id:uid(),type:'animal',taskId:task.id,taskTitle:`${task.title}的访客`,animalType:animal});
+      this.data.achievements.animals.push({type:animal,taskTitle:task.title,date:todayStr()});
+      setTimeout(()=>this.toast(`🐾 一只小动物被你的花园吸引来了！`,'encourage'),800);
+    }
+
+    this.checkAllShortTasksDone();
+    saveData(this.data);
+
+    if(cardEl){cardEl.classList.add('completed');const rect=cardEl.getBoundingClientRect();this.spawnPetals(rect.left+rect.width/2,rect.top);}
+    this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+
+    // Confetti + encouragement
+    const enc=this.randomEncouragement();
+    const spName=FLOWER_SPECIES[speciesIdx].name;
+    this.toast(`🎉 打卡成功！获得 ${spName} ×${flowerCount}<br><small>${enc}</small>`,'success');
+    this.spawnConfetti(50+flowerCount*10);
+    this.showPlaceModal('flower',flowerCount,task.title);
+  }
+
+  handleTaskFail(task,cardEl){
+    const difficulty=this.getDifficulty(task);
+    let coffinCount=task.type==='long'?Math.max(1,Math.round(1*difficulty)):1;
+    const penaltyType=Math.random()<0.5?'coffin':'tombstone';
+    for(let i=0;i<coffinCount;i++) this.data.pendingPlacements.push({id:uid(),type:penaltyType,taskId:task.id,taskTitle:task.title});
+    this.data.stats.totalFailed+=1;saveData(this.data);
+    if(cardEl) cardEl.classList.add('failed');
+    this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+    this.toast(`💀 任务失败… 获得 ${penaltyType==='coffin'?'⚰️':'🪦'} ×${coffinCount}`,'error');
+    this.showPlaceModal(penaltyType,coffinCount,task.title);
+  }
+
+  checkAllShortTasksDone(){
+    const today=new Date().toDateString();
+    const pendingShort=this.data.tasks.filter(t=>t.type==='short'&&(t.status==='pending'||t.status==='extended')&&t.deadline&&new Date(t.deadline).toDateString()===today);
+    const completedShort=this.data.tasks.filter(t=>t.type==='short'&&t.status==='completed'&&t.deadline&&new Date(t.deadline).toDateString()===today);
+    if(pendingShort.length===0&&completedShort.length>0){
+      const td=todayStr();
+      const alreadyGiven=this.data.gardenItems.some(i=>i.type==='tree'&&i.date===td)||this.data.pendingPlacements.some(i=>i.type==='tree'&&i.date===td)||this.data.scheduledRewards.some(r=>r.date===td&&r.type==='tree');
+      if(!alreadyGiven){
+        // Defer tree reward to 23:59
+        this.scheduleDailyTreeReward(td);
+      }
+    }
+  }
+
+  scheduleDailyTreeReward(td){
+    const now=new Date();
+    const rewardTime=new Date();rewardTime.setHours(23,59,0,0);
+    if(now>=rewardTime){
+      // Already past 23:59, award immediately
+      this.awardDailyTree(td);
+    }else{
+      const treeSp=Math.floor(Math.random()*TREE_SPECIES.length);
+      this.data.scheduledRewards.push({id:uid(),type:'tree',taskId:'daily-bonus',taskTitle:'今日全勤奖励',date:td,species:treeSp,scheduledTime:rewardTime.toISOString()});
+      saveData(this.data);
+      this.toast(`🌳 今日任务全部完成！${TREE_SPECIES[treeSp].name}将在23:59发放~`,'info');
+    }
+  }
+
+  awardDailyTree(td){
+    const treeSp=Math.floor(Math.random()*TREE_SPECIES.length);
+    this.data.pendingPlacements.push({id:uid(),type:'tree',taskId:'daily-bonus',taskTitle:'今日全勤奖励',date:td,species:treeSp});
+    this.data.stats.treesEarned+=1;
+    saveData(this.data);
+    this.toast(`🌳 今日任务全部完成！获得一棵${TREE_SPECIES[treeSp].name}！`,'success');
+    this.spawnConfetti(40);
+    this.updatePlaceQueue();this.updateStats();
+  }
+
+  checkDailyTreeReward(){
+    const now=new Date();
+    const remaining=this.data.scheduledRewards.filter(r=>new Date(r.scheduledTime)>now);
+    const due=this.data.scheduledRewards.filter(r=>new Date(r.scheduledTime)<=now);
+    for(const reward of due){
+      // Verify the reward is still valid (no new pending tasks for that date)
+      if(reward.type==='tree'){
+        const rewardDate=new Date(reward.scheduledTime).toDateString();
+        const pendingShort=this.data.tasks.filter(t=>t.type==='short'&&(t.status==='pending'||t.status==='extended')&&t.deadline&&new Date(t.deadline).toDateString()===rewardDate);
+        if(pendingShort.length===0){
+          this.data.pendingPlacements.push({id:reward.id,type:reward.type,taskId:reward.taskId,taskTitle:reward.taskTitle,date:reward.date,species:reward.species});
+          this.data.stats.treesEarned+=1;
+          this.toast(`🌳 全勤树已发放：${TREE_SPECIES[reward.species]?.name||'树'}！`,'success');
+          this.spawnConfetti(30);
+        }
+      }
+    }
+    this.data.scheduledRewards=remaining;
+    if(due.length>0){saveData(this.data);this.updatePlaceQueue();this.updateStats();}
+  }
+
+  getDifficulty(task){
+    if(task.type==='short')return 1;
+    switch(task.longPeriod){case'week':return 1.5;case'month':return 3;case'quarter':return 5;default:return task.longDays>60?5:task.longDays>30?3:1.5;}
+  }
+
+  checkOverdueTasks(){
+    const now=new Date();let changed=false;
+    for(const task of this.data.tasks){
+      if(task.status!=='pending'&&task.status!=='extended')continue;
+      const ed=task.extensionDeadline||task.deadline;
+      if(now>new Date(ed)&&!task.isCumulative){if(task.hasExtended){task.status='failed';changed=true;this.handleTaskFail(task);}}
+      if(task.isCumulative&&task.type==='long'){if(now>new Date(task.deadline)&&task.checkedDays.length<task.longDays){const ed2=task.extensionDeadline||task.deadline;if(now>new Date(ed2)){task.status='failed';changed=true;this.handleTaskFail(task);}}}
+    }
+    if(changed){saveData(this.data);this.renderTaskList();this.updateStats();}
+  }
+
+  deleteTask(taskId){
+    if(!confirm('确定删除这个任务吗？'))return;
+    this.data.tasks=this.data.tasks.filter(t=>t.id!==taskId);
+    this.data.pendingPlacements=this.data.pendingPlacements.filter(p=>p.taskId!==taskId);
+    saveData(this.data);this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+    this.toast('🗑️ 任务已删除','info');
+  }
+
+  // ========== Placement ==========
+  showPlaceModal(type,count,taskTitle){
+    const icons={flower:'🌸',coffin:'⚰️',tombstone:'🪦',tree:'🌳',special_flower:'🏵️',animal:'🐾'};
+    const names={flower:'花朵',coffin:'棺材',tombstone:'墓碑',tree:'树木',special_flower:'特殊花朵',animal:'动物访客'};
+    document.getElementById('place-icon').textContent=icons[type]||'🌸';
+    document.getElementById('place-title').textContent=`获得 ${names[type]||'物品'} ×${count}`;
+    document.getElementById('place-desc').textContent=`任务「${taskTitle}」的奖励已就绪，去荒野布置吧！`;
+    this.openModal('modal-place');
+  }
+
+  goPlaceItem(){
+    this.closeModal('modal-place');
+    this.placementMode=true;
+    this.currentPlacement=this.data.pendingPlacements[0]||null;
+    this.switchView('garden');
+    document.getElementById('garden-hint').textContent='🎯 点击荒野空地放置物品 | 右下角查看待放置队列 | Esc取消';
+    document.getElementById('garden-hint').style.opacity='1';
+  }
+
+  skipPlace(){this.closeModal('modal-place');this.placementMode=false;this.currentPlacement=null;}
+
+  placeItem(x,y){
+    if(!this.currentPlacement)return;
+    const item=this.data.pendingPlacements.shift();
+    this.data.gardenItems.push({id:item.id,type:item.type,taskId:item.taskId,taskTitle:item.taskTitle,x,y,species:item.species,animalType:item.animalType,date:item.date,placedAt:new Date().toISOString()});
+    saveData(this.data);
+
+    if(this.data.pendingPlacements.length>0){
+      this.currentPlacement=this.data.pendingPlacements[0];
+      this.toast(`已放置！还有 ${this.data.pendingPlacements.length} 个物品待布置`,'info');
+    }else{
+      this.placementMode=false;this.currentPlacement=null;
+      document.getElementById('garden-hint').textContent='🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置';
+      this.toast('✨ 布置完成！','success');
+      this.spawnPetals(x*this.gardenRenderer.w,y*this.gardenRenderer.h,15);
+    }
+    this.updatePlaceQueue();this.gardenRenderer?.draw();
+  }
+
+  updatePlaceQueue(){
+    const queue=document.getElementById('place-queue');
+    const icons={flower:'🌸',coffin:'⚰️',tombstone:'🪦',tree:'🌳',special_flower:'🏵️',animal:'🐾'};
+    if(this.data.pendingPlacements.length===0){
+      queue.innerHTML=this.placementMode?'<div class="place-queue-item" style="opacity:0.5">点击地图放置…</div>':'';
+      return;
+    }
+    // If not in placement mode, show a button to enter placement mode
+    let html='';
+    if(!this.placementMode){
+      html+=`<div class="place-queue-item" onclick="app.startPlacement()" style="border-color:var(--accent);cursor:pointer;background:rgba(200,168,78,0.15);font-weight:600;">🎯 开始放置 (${this.data.pendingPlacements.length}件)</div>`;
+    }
+    html+=this.data.pendingPlacements.slice(0,8).map((p,i)=>`<div class="place-queue-item" onclick="${this.placementMode?'':'app.startPlacement()'}" style="${i===0&&this.placementMode?'border-color:var(--accent);background:rgba(200,168,78,0.1)':''}${this.placementMode?'':'cursor:pointer'}"><span class="pq-icon">${icons[p.type]||'📦'}</span><span>${(p.taskTitle||'').slice(0,10)}</span></div>`).join('');
+    if(this.data.pendingPlacements.length>8) html+=`<div class="place-queue-item" style="opacity:0.5">...还有${this.data.pendingPlacements.length-8}个</div>`;
+    queue.innerHTML=html;
+  }
+
+  startPlacement(){
+    if(this.data.pendingPlacements.length===0){this.toast('没有待放置的物品','info');return;}
+    this.placementMode=true;
+    this.currentPlacement=this.data.pendingPlacements[0]||null;
+    document.getElementById('garden-hint').textContent='🎯 点击荒野空地放置物品 | 滚轮缩放 | Esc取消';
+    document.getElementById('garden-hint').style.opacity='1';
+    this.updatePlaceQueue();
+    this.gardenRenderer?.draw();
+    this.toast(`还有 ${this.data.pendingPlacements.length} 件物品待放置，点击荒地放置吧！`,'info');
+  }
+
+  showItemInfo(item){
+    const icons={flower:'🌸 花朵',coffin:'⚰️ 棺材',tombstone:'🪦 墓碑',tree:'🌳 树木',special_flower:'🏵️ 特殊花朵',animal:'🐾 动物访客'};
+    this.toast(`${icons[item.type]||'物品'} — ${item.taskTitle||'未知任务'}`,'info');
+  }
+
+  // ========== Achievements ==========
+  renderAchievements(){
+    const container=document.getElementById('achievements-content');
+    const empty=document.getElementById('empty-achievements');
+    const a=this.data.achievements;
+    const badges=[];
+
+    if(a.bestStreak>=7) badges.push({icon:'🔥',name:'七日达人',desc:`最长连续打卡 ${a.bestStreak} 天`,cls:'bronze'});
+    if(a.bestStreak>=14) badges.push({icon:'💎',name:'十四日之星',desc:`最长连续打卡 ${a.bestStreak} 天`,cls:'silver'});
+    if(a.bestStreak>=30) badges.push({icon:'👑',name:'一月之王',desc:`最长连续打卡 ${a.bestStreak} 天`,cls:'gold'});
+    if(this.data.stats.totalCompleted>=10) badges.push({icon:'🌸',name:'园丁新手',desc:`完成 ${this.data.stats.totalCompleted} 个任务`,cls:'bronze'});
+    if(this.data.stats.totalCompleted>=50) badges.push({icon:'🌺',name:'花园大师',desc:`完成 ${this.data.stats.totalCompleted} 个任务`,cls:'silver'});
+    if(this.data.stats.totalCompleted>=100) badges.push({icon:'🏵️',name:'传奇园丁',desc:`完成 ${this.data.stats.totalCompleted} 个任务`,cls:'gold'});
+    if(this.data.stats.treesEarned>=3) badges.push({icon:'🌳',name:'植树先锋',desc:`种植 ${this.data.stats.treesEarned} 棵树`,cls:'bronze'});
+    if(this.data.stats.treesEarned>=10) badges.push({icon:'🌲',name:'森林之王',desc:`种植 ${this.data.stats.treesEarned} 棵树`,cls:'gold'});
+    if(a.animals.length>=3) badges.push({icon:'🐾',name:'动物朋友',desc:`吸引 ${a.animals.length} 只动物访客`,cls:'silver'});
+    if(a.animals.length>=10) badges.push({icon:'🦊',name:'荒野动物园',desc:`吸引 ${a.animals.length} 只动物访客`,cls:'gold'});
+
+    if(badges.length===0){container.innerHTML='';empty.style.display='flex';return;}
+    empty.style.display='none';
+
+    const animalNames={rabbit:'🐰 小兔',squirrel:'🐿️ 松鼠',cat:'🐱 小猫',dog:'🐶 小狗',bird:'🐦 小鸟'};
+
+    container.innerHTML=`
+      <h3 style="color:var(--accent-glow);margin-bottom:12px">🏆 已解锁成就</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        ${badges.map(b=>`<span class="achievement-badge ${b.cls}">${b.icon} ${b.name}</span>`).join('')}
+      </div>
+      <h3 style="color:var(--accent-glow);margin-bottom:8px">📊 统计</h3>
+      <div style="color:var(--text-dim);line-height:2;margin-bottom:16px">
+        <div>🌸 完成任务：<strong style="color:var(--text)">${this.data.stats.totalCompleted}</strong></div>
+        <div>⚰️ 失败任务：<strong style="color:var(--text)">${this.data.stats.totalFailed}</strong></div>
+        <div>🌳 种植树木：<strong style="color:var(--text)">${this.data.stats.treesEarned}</strong></div>
+        <div>🔥 当前连续打卡：<strong style="color:var(--accent-glow)">${a.streak} 天</strong></div>
+        <div>🏅 最长连续打卡：<strong style="color:var(--accent-glow)">${a.bestStreak} 天</strong></div>
+        <div>🐾 动物访客：<strong style="color:var(--text)">${a.animals.length} 只</strong></div>
+        <div>🏡 花园物品总数：<strong style="color:var(--text)">${this.data.gardenItems.length}</strong></div>
+      </div>
+      ${a.animals.length>0?`
+        <h3 style="color:var(--accent-glow);margin-bottom:8px">🐾 访客记录</h3>
+        <div style="color:var(--text-dim);line-height:2">
+          ${a.animals.slice(-10).reverse().map(a=>`<div>${animalNames[a.type]||a.type} — 来自「${a.taskTitle}」${a.date}</div>`).join('')}
+        </div>
+      `:''}
+    `;
+  }
+
+  // ========== Render ==========
+  renderTaskList(){
+    const list=document.getElementById('task-list'),empty=document.getElementById('empty-tasks');
+    let tasks=[...this.data.tasks];
+    if(this.currentFilter==='short') tasks=tasks.filter(t=>t.type==='short');
+    else if(this.currentFilter==='long') tasks=tasks.filter(t=>t.type==='long');
+    else if(this.currentFilter==='completed') tasks=tasks.filter(t=>t.status==='completed');
+    else if(this.currentFilter==='failed') tasks=tasks.filter(t=>t.status==='failed');
+    const order={pending:0,extended:1,completed:2,failed:3};
+    tasks.sort((a,b)=>(order[a.status]||0)-(order[b.status]||0)||new Date(a.deadline)-new Date(b.deadline));
+    if(tasks.length===0){list.innerHTML='';empty.style.display='flex';return;}
+    empty.style.display='none';
+
+    list.innerHTML=tasks.map(task=>{
+      const st={pending:'⏳ 待完成',extended:'🕐 已延期',completed:'✅ 已完成',failed:'❌ 已失败'};
+      const isPending=task.status==='pending'||task.status==='extended';
+      let details='';details+=`<span>📅 截止: ${fmtTime(task.extensionDeadline||task.deadline)}</span>`;
+      if(task.isCumulative) details+=`<span>📊 打卡: ${task.checkedDays.length}/${task.longDays} 天</span>`;
+      if(task.hasExtended) details+=`<span style="color:var(--danger-glow)">⚠️ 已延期</span>`;
+      let actions='';
+      if(isPending&&!task.isCumulative){
+        const dl=new Date(task.extensionDeadline||task.deadline);
+        const label=new Date()<=dl||task.status==='extended'?'✅ 打卡':'🕐 超时打卡';
+        if(new Date()<=dl||!task.hasExtended) actions+=`<button class="btn-checkin" onclick="app.checkIn('${task.id}',this.closest('.task-card'))">${label}</button>`;
+      }
+      if(task.isCumulative&&task.type==='long'&&isPending) actions+=`<button class="btn-checkin" onclick="app.checkIn('${task.id}',this.closest('.task-card'))">📅 今日打卡</button>`;
+      if(isPending) actions+=`<button class="btn-edit" onclick="app.editTask('${task.id}')" style="color:var(--accent)!important;border-color:transparent!important" title="编辑任务">✏️</button>`;
+      actions+=`<button class="btn-delete" onclick="app.deleteTask('${task.id}')">🗑️</button>`;
+      const icon=task.status==='completed'?'🌸 ':task.status==='failed'?'⚰️ ':'📌 ';
+      return `<div class="task-card ${task.status}" data-task-id="${task.id}">
+        <div class="card-header"><span class="card-title">${icon}${task.title}<span class="card-type ${task.type}">${task.type==='short'?'⚡ 短期':'🎯 长期'}</span></span><span class="card-status ${task.status}">${st[task.status]||''}</span></div>
+        <div class="card-details">${details}</div>
+        ${task.notes?`<div class="card-notes">💬 ${task.notes}</div>`:''}
+        ${actions?`<div class="card-actions">${actions}</div>`:''}
+      </div>`;
+    }).join('');
+  }
+
+  updateStats(){
+    document.getElementById('stat-completed').textContent=this.data.stats.totalCompleted;
+    document.getElementById('stat-failed').textContent=this.data.stats.totalFailed;
+    document.getElementById('stat-trees').textContent=this.data.stats.treesEarned;
+    document.getElementById('stat-streak').textContent=this.data.achievements.streak;
+  }
+}
+
+// ============ Bootstrap ============
+app=new App();
+
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Escape'){app.placementMode=false;app.currentPlacement=null;document.getElementById('garden-hint').textContent='🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置';app.updatePlaceQueue();app.gardenRenderer?.draw();app.closeModal('modal-add');app.closeModal('modal-extend');app.closeModal('modal-place');}
+  if(e.key==='n'&&e.ctrlKey){e.preventDefault();app.openModal('modal-add');}
+});
+
+document.getElementById('btn-add-task').addEventListener('click',()=>app.openModal('modal-add'));
+
+console.log('🌾 任务花园 v2 已就绪');
+console.log('  "打卡成功，花开满枝；拖延失败，入土为安"');
+console.log('  ✨ 新功能：现实花卉品种 | 动物访客 | 成就系统 | 连续打卡 | 五彩纸屑庆祝');
+console.log('  快捷键: Ctrl+N 新建任务 | Esc 取消操作');
+</script>
+</body>
+</html>
