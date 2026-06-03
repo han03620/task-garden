@@ -135,7 +135,19 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
   .modal{min-width:auto;width:95vw;padding:16px}
   .task-card .card-header{flex-direction:column;align-items:flex-start}
 }
+/* Auth styles */
+.user-btn{cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--panel-bg);color:var(--text);font-size:12px;transition:all .2s;white-space:nowrap}
+.user-btn:hover{border-color:var(--accent)}
+.user-btn.logged-in{border-color:var(--accent);background:rgba(224,200,96,0.1)}
+#modal-auth .auth-tabs{display:flex;gap:0;margin-bottom:16px}
+#modal-auth .auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;border-bottom:2px solid var(--border);color:var(--text-dim);font-size:14px;transition:all .2s}
+#modal-auth .auth-tab.active{border-bottom-color:var(--accent);color:var(--accent-glow)}
+#modal-auth .auth-error{color:var(--danger-glow);font-size:12px;margin-top:8px;display:none}
 </style>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -153,6 +165,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
       <span>🌳 <strong id="stat-trees">0</strong></span>
       <span class="streak">🔥 <strong id="stat-streak">0</strong>天</span>
     </div>
+    <button class="user-btn" id="user-btn" onclick="app.showAuthModal()" title="登录同步数据">👤 登录</button>
   </div>
 
   <div id="main">
@@ -252,6 +265,30 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
   </div>
 </div>
 
+<!-- Auth Modal -->
+<div id="modal-auth" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="app.switchAuthTab('login')">🔑 登录</div>
+      <div class="auth-tab" onclick="app.switchAuthTab('register')">✨ 注册</div>
+    </div>
+    <div id="auth-form-login">
+      <label>邮箱</label><input type="email" id="login-email" placeholder="your@email.com">
+      <label>密码</label><input type="password" id="login-password" placeholder="输入密码">
+      <div class="auth-error" id="login-error"></div>
+      <div class="btn-row"><button onclick="app.closeModal('modal-auth')">取消</button><button class="btn-primary" id="btn-login" onclick="app.handleLogin()">登录</button></div>
+    </div>
+    <div id="auth-form-register" class="hidden">
+      <label>邮箱</label><input type="email" id="reg-email" placeholder="your@email.com">
+      <label>密码</label><input type="password" id="reg-password" placeholder="至少6位密码" minlength="6">
+      <label>确认密码</label><input type="password" id="reg-password2" placeholder="再次输入密码">
+      <div class="auth-error" id="register-error"></div>
+      <div class="btn-row"><button onclick="app.closeModal('modal-auth')">取消</button><button class="btn-primary" id="btn-register" onclick="app.handleRegister()">注册并同步数据</button></div>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:8px">💡 注册后你的任务数据将保存到云端，换浏览器也不会丢失</p>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <div id="particle-overlay"></div>
 <div id="confetti-overlay"></div>
@@ -261,6 +298,32 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
 //  任务花园 v2 — 打卡成功，花开满枝；拖延失败，入土为安
 // ============================================================
 var app; // 提前声明避免 TDZ
+
+// ============ Firebase Config ============
+// 👇 请替换为你的 Firebase 项目配置 (https://console.firebase.google.com/)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD-PLACEHOLDER",
+  authDomain: "YOUR-PROJECT.firebaseapp.com",
+  projectId: "YOUR-PROJECT",
+  storageBucket: "YOUR-PROJECT.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxx"
+};
+
+let firebaseReady = false;
+let firestore = null;
+let auth = null;
+let currentUser = null;
+
+try {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  auth = firebase.auth();
+  firestore = firebase.firestore();
+  firebaseReady = true;
+  console.log('🔥 Firebase 已就绪');
+} catch(e) {
+  console.warn('⚠️ Firebase 未配置，使用本地存储模式:', e.message);
+}
 
 // ============ Utilities ============
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -296,7 +359,7 @@ const ENCOURAGEMENTS=[
   '🍀 好运眷顾勤奋的人！','🎨 你正在把荒地变成花园！','💖 对自己负责，就是最好的礼物。',
 ];
 
-// ============ Data Layer ============
+// ============ Data Layer (localStorage + optional Firestore) ============
 const STORE_KEY='task-garden-data';
 const DATA_VERSION=2;
 
@@ -323,7 +386,7 @@ function migrateData(data){
   return data;
 }
 
-function loadData(){
+function loadLocalData(){
   try{
     const raw=localStorage.getItem(STORE_KEY);
     if(raw){
@@ -339,11 +402,77 @@ function loadData(){
       }
       return migrateData(data);
     }
-  }catch(e){console.error('Load failed:',e);}
+  }catch(e){console.error('Local load failed:',e);}
   return defaultData();
 }
 
-function saveData(data){try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){console.error('Save failed:',e);}}
+function saveLocalData(data){try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){console.error('Local save failed:',e);}}
+
+// Cloud-backed load/save
+async function loadCloudData(){
+  if(!currentUser||!firestore) return null;
+  try{
+    const doc=await firestore.collection('users').doc(currentUser.uid).get();
+    if(doc.exists){
+      const data=doc.data().appData;
+      if(data) return migrateData(data);
+    }
+  }catch(e){console.error('Cloud load failed:',e);}
+  return null;
+}
+
+async function saveCloudData(data){
+  if(!currentUser||!firestore) return;
+  try{
+    await firestore.collection('users').doc(currentUser.uid).set({appData:data,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  }catch(e){console.error('Cloud save failed:',e);}
+}
+
+// Unified load: cloud first, fall back to local
+async function loadData(){
+  if(currentUser&&firestore){
+    const cloudData=await loadCloudData();
+    if(cloudData) return cloudData;
+  }
+  return loadLocalData();
+}
+
+// Unified save: cloud + local
+function saveData(data){
+  saveLocalData(data);
+  if(currentUser&&firestore){
+    // Debounce cloud saves: 2s after last change
+    if(saveData._timer) clearTimeout(saveData._timer);
+    saveData._timer=setTimeout(()=>saveCloudData(data),2000);
+  }
+}
+
+// Merge local data into cloud (on register/login)
+async function mergeLocalToCloud(){
+  if(!currentUser||!firestore) return;
+  const localData=loadLocalData();
+  const cloudData=await loadCloudData();
+  let merged;
+  if(cloudData){
+    // Merge: prefer cloud for tasks, merge garden items by id
+    const cloudIds=new Set(cloudData.tasks.map(t=>t.id));
+    const newLocalTasks=localData.tasks.filter(t=>!cloudIds.has(t.id));
+    const cloudItemIds=new Set(cloudData.gardenItems.map(i=>i.id));
+    const newLocalItems=localData.gardenItems.filter(i=>!cloudItemIds.has(i.id));
+    merged={...cloudData,
+      tasks:[...cloudData.tasks,...newLocalTasks],
+      gardenItems:[...cloudData.gardenItems,...newLocalItems],
+      pendingPlacements:[...cloudData.pendingPlacements,...localData.pendingPlacements.filter(p=>!cloudData.pendingPlacements.some(cp=>cp.id===p.id))],
+      stats:{totalCompleted:Math.max(cloudData.stats.totalCompleted,localData.stats.totalCompleted),totalFailed:Math.max(cloudData.stats.totalFailed,localData.stats.totalFailed),treesEarned:Math.max(cloudData.stats.treesEarned,localData.stats.treesEarned)},
+      achievements:{...cloudData.achievements,streak:Math.max(cloudData.achievements.streak||0,localData.achievements.streak||0),bestStreak:Math.max(cloudData.achievements.bestStreak||0,localData.achievements.bestStreak||0),animals:[...cloudData.achievements.animals,...localData.achievements.animals.filter(a=>!cloudData.achievements.animals.some(ca=>ca.date===a.date&&ca.type===a.type))]},
+    };
+  }else{
+    merged=localData;
+  }
+  await saveCloudData(merged);
+  saveLocalData(merged);
+  return merged;
+}
 
 // ============ Garden Renderer ============
 class GardenRenderer{
@@ -416,7 +545,7 @@ class GardenRenderer{
   }
 
   getItemAt(mx,my){
-    if(!app)return null;
+    if(!app||!app.data)return null;
     const data=app.data;
     const items=data.gardenItems.concat(data.pendingPlacements.map(p=>({...p,isPending:true})));
     for(let i=items.length-1;i>=0;i--){
@@ -430,7 +559,7 @@ class GardenRenderer{
   }
 
   handleClick(mx,my){
-    if(!app)return;
+    if(!app||!app.data)return;
     if(app.placementMode&&app.currentPlacement){
       const wx=(mx-this.offsetX)/(this.w*this.scale);
       const wy=(my-this.offsetY)/(this.h*this.scale);
@@ -534,7 +663,7 @@ class GardenRenderer{
   }
 
   drawDeadTrees(ctx){
-    if(!app)return;
+    if(!app||!app.data)return;
     const data=app.data;
     if(!data.deadTrees||data.deadTrees.length===0){data.deadTrees=this.generateDeadTrees();saveData(data);}
     for(const tree of data.deadTrees){
@@ -561,7 +690,7 @@ class GardenRenderer{
   }
 
   drawGardenItems(ctx){
-    if(!app)return;
+    if(!app||!app.data)return;
     for(const item of app.data.gardenItems){
       const ix=item.x*this.w,iy=item.y*this.h;
       switch(item.type){
@@ -903,17 +1032,53 @@ class GardenRenderer{
 // ============ Application ============
 class App{
   constructor(){
-    this.data=loadData();
+    // Start with local data immediately (no null state)
+    this.data=loadLocalData();
     this.gardenRenderer=null;
     this.placementMode=false;
     this.currentPlacement=null;
     this.currentExtendTaskId=null;
     this.currentFilter='all';
-    this.editingTaskId=null; // track which task is being edited
-    this.init();
+    this.editingTaskId=null;
+    this.authTab='login';
+    this._initReady=false;
+    this._initPromise=this._doInit();
   }
 
-  init(){
+  async _doInit(){
+    // Check Firebase auth state — upgrade to cloud data if logged in
+    if(firebaseReady&&auth){
+      await new Promise(resolve=>{
+        const unsub=auth.onAuthStateChanged(async(user)=>{
+          unsub();
+          if(user){
+            currentUser=user;
+            console.log('👤 Logged in as',user.email);
+            const merged=await mergeLocalToCloud();
+            if(merged){this.data=merged;saveLocalData(this.data);}
+            this._finishInit();
+            this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+            this.gardenRenderer?.draw();
+          }else{
+            currentUser=null;
+            this._finishInit();
+          }
+          this.updateUserButton();
+          resolve();
+        });
+      });
+    }else{
+      this._finishInit();
+    }
+  }
+
+  _finishInit(){
+    this._initReady=true;
+    this._setupUI();
+    this.updateUserButton();
+  }
+
+  _setupUI(){
     const canvas=document.getElementById('garden-canvas');
     this.gardenRenderer=new GardenRenderer(canvas);
 
@@ -937,15 +1102,125 @@ class App{
       document.getElementById('custom-days-wrap').classList.toggle('hidden',e.target.value!=='custom');
     });
 
+    // Enter key to submit auth forms
+    document.getElementById('login-password').addEventListener('keydown',(e)=>{if(e.key==='Enter')this.handleLogin();});
+    document.getElementById('reg-password2').addEventListener('keydown',(e)=>{if(e.key==='Enter')this.handleRegister();});
+
     this.renderTaskList();this.updateStats();this.updatePlaceQueue();
     setInterval(()=>{this.checkOverdueTasks();this.checkDailyTreeReward();},30000);
-    // Check on init (in case 23:59 passed while away)
     setTimeout(()=>this.checkDailyTreeReward(),2000);
 
     const now=new Date();now.setHours(23,59,0,0);
     document.getElementById('add-deadline').value=now.toISOString().slice(0,16);
 
     requestAnimationFrame(()=>this.gardenRenderer.resize());
+  }
+
+  // ========== Auth ==========
+  showAuthModal(){
+    if(currentUser){
+      // Show user menu
+      if(confirm(`当前登录：${currentUser.email}\n\n是否退出登录？\n（退出后数据保留在本地浏览器）`)){
+        this.handleLogout();
+      }
+      return;
+    }
+    this.authTab='login';this._updateAuthTabUI();
+    document.getElementById('login-email').value='';
+    document.getElementById('login-password').value='';
+    document.getElementById('login-error').style.display='none';
+    document.getElementById('reg-email').value='';
+    document.getElementById('reg-password').value='';
+    document.getElementById('reg-password2').value='';
+    document.getElementById('register-error').style.display='none';
+    this.openModal('modal-auth');
+  }
+
+  switchAuthTab(tab){
+    this.authTab=tab;this._updateAuthTabUI();
+    document.getElementById('login-error').style.display='none';
+    document.getElementById('register-error').style.display='none';
+  }
+
+  _updateAuthTabUI(){
+    document.querySelectorAll('#modal-auth .auth-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelector(`#modal-auth .auth-tab${this.authTab==='register'?':last-child':':first-child'}`)?.classList.add('active');
+    document.getElementById('auth-form-login').classList.toggle('hidden',this.authTab!=='login');
+    document.getElementById('auth-form-register').classList.toggle('hidden',this.authTab!=='register');
+  }
+
+  async handleLogin(){
+    if(!firebaseReady){this.toast('⚠️ Firebase 未配置，无法登录','error');return;}
+    const email=document.getElementById('login-email').value.trim();
+    const pw=document.getElementById('login-password').value;
+    const errEl=document.getElementById('login-error');
+    if(!email||!pw){errEl.textContent='请填写邮箱和密码';errEl.style.display='block';return;}
+    const btn=document.getElementById('btn-login');btn.disabled=true;btn.textContent='登录中…';
+    try{
+      const cred=await auth.signInWithEmailAndPassword(email,pw);
+      currentUser=cred.user;
+      this.closeModal('modal-auth');
+      // Load + merge cloud data
+      const merged=await mergeLocalToCloud();
+      if(merged){this.data=merged;saveLocalData(this.data);}
+      this.renderTaskList();this.updateStats();this.updatePlaceQueue();
+      this.gardenRenderer?.draw();
+      this.updateUserButton();
+      this.toast('✅ 登录成功！数据已同步','success');
+    }catch(e){
+      errEl.textContent='登录失败：'+(e.code==='auth/invalid-credential'?'邮箱或密码错误':e.code==='auth/too-many-requests'?'尝试次数过多，请稍后再试':e.message);
+      errEl.style.display='block';
+    }
+    btn.disabled=false;btn.textContent='登录';
+  }
+
+  async handleRegister(){
+    if(!firebaseReady){this.toast('⚠️ Firebase 未配置，无法注册','error');return;}
+    const email=document.getElementById('reg-email').value.trim();
+    const pw=document.getElementById('reg-password').value;
+    const pw2=document.getElementById('reg-password2').value;
+    const errEl=document.getElementById('register-error');
+    if(!email||!pw){errEl.textContent='请填写邮箱和密码';errEl.style.display='block';return;}
+    if(pw.length<6){errEl.textContent='密码至少需要6位';errEl.style.display='block';return;}
+    if(pw!==pw2){errEl.textContent='两次密码不一致';errEl.style.display='block';return;}
+    const btn=document.getElementById('btn-register');btn.disabled=true;btn.textContent='注册中…';
+    try{
+      const cred=await auth.createUserWithEmailAndPassword(email,pw);
+      currentUser=cred.user;
+      // Upload current local data to cloud
+      await mergeLocalToCloud();
+      this.closeModal('modal-auth');
+      this.toast('🎉 注册成功！数据已同步到云端，换浏览器也能恢复','success');
+      this.updateUserButton();
+    }catch(e){
+      errEl.textContent='注册失败：'+(e.code==='auth/email-already-in-use'?'该邮箱已被注册':e.code==='auth/weak-password'?'密码强度不足':e.message);
+      errEl.style.display='block';
+    }
+    btn.disabled=false;btn.textContent='注册并同步数据';
+  }
+
+  async handleLogout(){
+    if(!firebaseReady||!auth) return;
+    try{
+      saveLocalData(this.data); // Keep local copy
+      await auth.signOut();
+      currentUser=null;
+      this.toast('👋 已退出登录，数据保留在本地','info');
+      this.updateUserButton();
+    }catch(e){console.error('Logout failed:',e);}
+  }
+
+  updateUserButton(){
+    const btn=document.getElementById('user-btn');
+    if(currentUser){
+      btn.className='user-btn logged-in';
+      btn.innerHTML=`👤 ${currentUser.email.split('@')[0]}`;
+      btn.title='已登录 — 点击退出';
+    }else{
+      btn.className='user-btn';
+      btn.innerHTML='👤 登录';
+      btn.title='登录同步数据 — 换浏览器不丢失';
+    }
   }
 
   // ========== Navigation ==========
@@ -1461,7 +1736,7 @@ class App{
 app=new App();
 
 document.addEventListener('keydown',(e)=>{
-  if(e.key==='Escape'){app.placementMode=false;app.currentPlacement=null;document.getElementById('garden-hint').textContent='🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置';app.updatePlaceQueue();app.gardenRenderer?.draw();app.closeModal('modal-add');app.closeModal('modal-extend');app.closeModal('modal-place');}
+  if(e.key==='Escape'){app.placementMode=false;app.currentPlacement=null;document.getElementById('garden-hint').textContent='🖱️ 拖拽平移 | 滚轮缩放 | 完成任务的奖励可在此放置';app.updatePlaceQueue();app.gardenRenderer?.draw();app.closeModal('modal-add');app.closeModal('modal-extend');app.closeModal('modal-place');app.closeModal('modal-auth');}
   if(e.key==='n'&&e.ctrlKey){e.preventDefault();app.openModal('modal-add');}
 });
 
@@ -1469,8 +1744,9 @@ document.getElementById('btn-add-task').addEventListener('click',()=>app.openMod
 
 console.log('🌾 任务花园 v2 已就绪');
 console.log('  "打卡成功，花开满枝；拖延失败，入土为安"');
-console.log('  ✨ 新功能：现实花卉品种 | 动物访客 | 成就系统 | 连续打卡 | 五彩纸屑庆祝');
+console.log('  ✨ 现实花卉 | 动物访客 | 成就系统 | 连续打卡 | 云端同步');
 console.log('  快捷键: Ctrl+N 新建任务 | Esc 取消操作');
+console.log('  💡 点击右上角「登录」注册账号，数据可跨浏览器同步');
 </script>
 </body>
 </html>
