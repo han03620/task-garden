@@ -206,8 +206,12 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
     <h2>📝 新建任务</h2>
     <label>任务名称</label>
     <input type="text" id="add-title" placeholder="例如：完成周报、跑步30分钟…" maxlength="60">
-    <label>截止时间</label>
-    <input type="datetime-local" id="add-deadline">
+    <label>起止时间</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input type="datetime-local" id="add-starttime" style="flex:1">
+      <span>至</span>
+      <input type="datetime-local" id="add-deadline" style="flex:1">
+    </div>
     <label>备注</label>
     <textarea id="add-notes" placeholder="可选备注…" maxlength="200"></textarea>
     <label>任务类型</label>
@@ -957,7 +961,7 @@ class GardenRenderer{
   }
 
   drawCoffin(ctx,x,y){
-    const w=32,h=18;
+    const w=26,h=16;
     ctx.fillStyle='#5a3828';ctx.strokeStyle='#3a2010';ctx.lineWidth=2;
     ctx.beginPath();ctx.moveTo(x-w*0.3,y-h);ctx.lineTo(x+w*0.3,y-h);ctx.lineTo(x+w*0.5,y);ctx.lineTo(x-w*0.5,y);ctx.closePath();
     ctx.fill();ctx.stroke();
@@ -965,7 +969,7 @@ class GardenRenderer{
     ctx.beginPath();ctx.moveTo(x,y-h+2);ctx.lineTo(x,y-2);ctx.moveTo(x-5,y-h*0.5);ctx.lineTo(x+5,y-h*0.5);ctx.stroke();
   }
   drawTombstone(ctx,x,y){
-    const w=24,h=32;
+    const w=20,h=28;
     ctx.fillStyle='#7a7a80';ctx.strokeStyle='#4a4a50';ctx.lineWidth=2;
     ctx.beginPath();ctx.moveTo(x-w*0.5,y);ctx.lineTo(x-w*0.5,y-h*0.7);
     ctx.quadraticCurveTo(x-w*0.5,y-h,x,y-h);ctx.quadraticCurveTo(x+w*0.5,y-h,x+w*0.5,y-h*0.7);
@@ -1030,6 +1034,8 @@ class App{
 
     const now=new Date();now.setHours(23,59,0,0);
     document.getElementById('add-deadline').value=now.toISOString().slice(0,16);
+    const startDefault=new Date();startDefault.setHours(0,0,0,0);
+    document.getElementById('add-starttime').value=startDefault.toISOString().slice(0,16);
 
     requestAnimationFrame(()=>this.gardenRenderer.resize());
   }
@@ -1182,11 +1188,14 @@ class App{
   // ========== Task Management ==========
   addTask(){
     const title=document.getElementById('add-title').value.trim();
+    const startTime=document.getElementById('add-starttime').value;
     const deadline=document.getElementById('add-deadline').value;
     const notes=document.getElementById('add-notes').value.trim();
     const typeVal=document.getElementById('add-type').value;
     if(!title){this.toast('请输入任务名称！','error');return;}
     if(!deadline){this.toast('请设置截止时间！','error');return;}
+
+    const startTimeVal=startTime?new Date(startTime).toISOString():null;
 
     let taskType='short',longPeriod=null,longDays=1,isCumulative=false;
     if(typeVal==='long-single'){taskType='long';longPeriod=document.getElementById('add-period').value;}
@@ -1199,7 +1208,7 @@ class App{
       // Edit mode
       const task=this.data.tasks.find(t=>t.id===this.editingTaskId);
       if(!task)return;
-      task.title=title;task.deadline=new Date(deadline).toISOString();task.notes=notes;
+      task.title=title;task.startTime=startTimeVal;task.deadline=new Date(deadline).toISOString();task.notes=notes;
       task.type=taskType;task.longPeriod=longPeriod;task.longDays=longDays;task.isCumulative=isCumulative;
       if(!task.isCumulative) task.checkedDays=[];
       saveData(this.data);
@@ -1209,7 +1218,7 @@ class App{
       this.resetAddForm();
     }else{
       // Add mode
-      const task={id:uid(),title,deadline:new Date(deadline).toISOString(),notes,type:taskType,longPeriod,longDays,isCumulative,checkedDays:[],status:'pending',extensionDeadline:null,hasExtended:false,createdAt:new Date().toISOString()};
+      const task={id:uid(),title,startTime:startTimeVal,deadline:new Date(deadline).toISOString(),notes,type:taskType,longPeriod,longDays,isCumulative,checkedDays:[],status:'pending',extensionDeadline:null,hasExtended:false,createdAt:new Date().toISOString()};
       this.data.tasks.push(task);saveData(this.data);
       this.closeModal('modal-add');this.renderTaskList();this.updateStats();
       this.toast('✅ 任务创建成功！','success');
@@ -1222,6 +1231,7 @@ class App{
     if(!task)return;
     this.editingTaskId=taskId;
     document.getElementById('add-title').value=task.title;
+    document.getElementById('add-starttime').value=task.startTime?new Date(task.startTime).toISOString().slice(0,16):'';
     document.getElementById('add-deadline').value=new Date(task.deadline).toISOString().slice(0,16);
     document.getElementById('add-notes').value=task.notes||'';
     if(task.type==='short') document.getElementById('add-type').value='short';
@@ -1246,6 +1256,7 @@ class App{
     this.editingTaskId=null;
     document.getElementById('add-title').value='';document.getElementById('add-notes').value='';
     const now=new Date();now.setHours(23,59,0,0);document.getElementById('add-deadline').value=now.toISOString().slice(0,16);
+    const startDefault=new Date();startDefault.setHours(0,0,0,0);document.getElementById('add-starttime').value=startDefault.toISOString().slice(0,16);
     document.getElementById('add-type').value='short';document.getElementById('long-options').classList.add('hidden');
     document.querySelector('#modal-add h2').textContent='📝 新建任务';
     document.querySelector('#modal-add .btn-primary').textContent='确认创建';
@@ -1569,7 +1580,7 @@ class App{
     list.innerHTML=tasks.map(task=>{
       const st={pending:'⏳ 待完成',extended:'🕐 已延期',completed:'✅ 已完成',failed:'❌ 已失败'};
       const isPending=task.status==='pending'||task.status==='extended';
-      let details='';details+=`<span>📅 截止: ${fmtTime(task.extensionDeadline||task.deadline)}</span>`;
+      let details='';details+=`<span>📅 起止: ${task.startTime?fmtTime(task.startTime):'—'} 至 ${fmtTime(task.extensionDeadline||task.deadline)}</span>`;
       if(task.isCumulative) details+=`<span>📊 打卡: ${task.checkedDays.length}/${task.longDays} 天</span>`;
       if(task.hasExtended) details+=`<span style="color:var(--danger-glow)">⚠️ 已延期</span>`;
       let actions='';
