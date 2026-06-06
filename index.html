@@ -144,23 +144,21 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
   60%{opacity:0.9}
   100%{max-height:100vh;opacity:1;transform:scaleY(1);transform-origin:top}
 }
-.schedule-list{max-height:280px;overflow-y:auto;margin-bottom:12px;padding-right:4px}
+.schedule-list{flex:1;overflow-y:auto;margin-bottom:12px;padding-right:4px;min-height:0}
 .schedule-section-label{font-size:13px;font-weight:700;color:#7a5a30;margin:8px 0 4px;padding-bottom:2px;border-bottom:1px dotted #c4a060}
 .schedule-item{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:4px 0;background:rgba(255,252,240,0.5);border-radius:8px;border:1px solid rgba(180,140,80,0.2);font-size:13px;transition:all .2s}
 .schedule-item:hover{background:rgba(255,252,240,0.8);border-color:rgba(180,140,80,0.5)}
 .schedule-item .sched-title{flex:1;font-weight:500}
 .schedule-item .sched-time{color:#7a5a30;font-size:12px;white-space:nowrap}
-.schedule-item .sched-date-badge{font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap}
-.schedule-item .sched-date-badge.today{background:#e8d5a8;color:#5a3a18}
-.schedule-item .sched-date-badge.tomorrow{background:#d8c8e8;color:#4a3070}
+.schedule-item .sched-date-badge{font-size:11px;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(180,140,80,0.15);color:#7a5a30}
 .schedule-item .sched-del{background:none;border:none;color:#c08070;cursor:pointer;font-size:16px;padding:2px 6px;transition:all .2s}
 .schedule-item .sched-del:hover{color:#d04030;transform:scale(1.2)}
 .schedule-add-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .schedule-add-form input[type="text"]{flex:2;min-width:120px;padding:8px 12px;border-radius:8px;border:1px solid #c4a060;background:rgba(255,252,240,0.7);color:#3a2a10;font-size:13px;font-family:inherit;outline:none}
 .schedule-add-form input[type="text"]:focus{border-color:#8a6030}
 .schedule-add-form input[type="datetime-local"]{flex:1;min-width:140px;padding:8px 10px;border-radius:8px;border:1px solid #c4a060;background:rgba(255,252,240,0.7);color:#3a2a10;font-size:12px;font-family:inherit;outline:none}
-.schedule-add-form select{flex:0;min-width:80px;padding:8px 10px;border-radius:8px;border:1px solid #c4a060;background:rgba(255,252,240,0.7);color:#3a2a10;font-size:13px;font-family:inherit;outline:none;cursor:pointer}
-.schedule-add-form input:focus,.schedule-add-form select:focus{border-color:#8a6030}
+.schedule-add-form input[type="date"]{flex:0;min-width:120px;padding:8px 10px;border-radius:8px;border:1px solid #c4a060;background:rgba(255,252,240,0.7);color:#3a2a10;font-size:12px;font-family:inherit;outline:none;cursor:pointer}
+.schedule-add-form input:focus,.schedule-add-form input[type="date"]:focus{border-color:#8a6030}
 .schedule-add-form button{padding:8px 16px;border-radius:20px;border:1px solid #8a6030;background:linear-gradient(135deg,rgba(180,130,70,0.3),rgba(180,130,70,0.1));color:#5a3a18;cursor:pointer;font-size:18px;font-weight:700;transition:all .2s}
 .schedule-add-form button:hover{background:rgba(180,130,70,0.4);transform:scale(1.05)}
 .schedule-empty{text-align:center;padding:30px 20px;color:#9a8a70;font-size:14px;font-style:italic}
@@ -351,10 +349,7 @@ body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg);co
   <div class="schedule-add-form">
     <input type="text" id="schedule-title" placeholder="写一个日程…" maxlength="60">
     <input type="datetime-local" id="schedule-time">
-    <select id="schedule-date">
-      <option value="today">今天</option>
-      <option value="tomorrow">明天</option>
-    </select>
+    <input type="date" id="schedule-date">
     <button onclick="app.addSchedule()" title="添加日程">＋</button>
   </div>
 </div>
@@ -1260,31 +1255,51 @@ class App{
   openSchedule(){
     this.switchView('schedule');
     this.renderSchedule();
-    // Reset form
     document.getElementById('schedule-title').value='';
     document.getElementById('schedule-time').value='';
-    document.getElementById('schedule-date').value='today';
+    document.getElementById('schedule-date').value=todayStr();
   }
 
   renderSchedule(){
     const list=document.getElementById('schedule-list');
-    const todayItems=this.data.schedule.filter(s=>s.date==='today');
-    const tomorrowItems=this.data.schedule.filter(s=>s.date==='tomorrow');
-    if(todayItems.length===0&&tomorrowItems.length===0){
+    if(this.data.schedule.length===0){
       list.innerHTML='<div class="schedule-empty">📜 暂无日程，添加一条吧</div>';return;
     }
+    // Resolve date: handle legacy 'today'/'tomorrow' via createdAt fallback
+    const resolveDate=s=>{
+      if(s.date==='today'||s.date==='tomorrow'){
+        return s.createdAt?new Date(s.createdAt).toISOString().slice(0,10):todayStr();
+      }
+      return s.date||todayStr();
+    };
+    const fmtDateLabel=d=>{
+      const dt=new Date(d+'T00:00:00');
+      const wd=['周日','周一','周二','周三','周四','周五','周六'];
+      return `${dt.getMonth()+1}月${dt.getDate()}日 ${wd[dt.getDay()]}`;
+    };
+    // Group by date
+    const groups={};
+    for(const s of this.data.schedule){
+      const d=resolveDate(s);
+      if(!groups[d]) groups[d]=[];
+      groups[d].push(s);
+    }
+    const sorted=Object.keys(groups).sort();
     const renderItem=s=>{
       const timeStr=s.startTime?fmtTime(s.startTime):'';
+      const d=resolveDate(s);
       return `<div class="schedule-item">
         <span class="sched-title">${s.title}</span>
         ${timeStr?`<span class="sched-time">🕐 ${timeStr}</span>`:''}
-        <span class="sched-date-badge ${s.date}">${s.date==='today'?'今天':'明天'}</span>
+        <span class="sched-date-badge">${fmtDateLabel(d)}</span>
         <button class="sched-del" onclick="app.deleteSchedule('${s.id}')" title="删除">×</button>
       </div>`;
     };
     let html='';
-    if(todayItems.length>0) html+=`<div class="schedule-section-label">🌅 今天</div>`+todayItems.map(renderItem).join('');
-    if(tomorrowItems.length>0) html+=`<div class="schedule-section-label">🌙 明天</div>`+tomorrowItems.map(renderItem).join('');
+    for(const d of sorted){
+      html+=`<div class="schedule-section-label">📅 ${fmtDateLabel(d)}</div>`;
+      html+=groups[d].map(renderItem).join('');
+    }
     list.innerHTML=html;
   }
 
