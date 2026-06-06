@@ -1594,9 +1594,9 @@ class App{
       if(task.status!=='pending'&&task.status!=='extended')continue;
       const ed=new Date(task.extensionDeadline||task.deadline);
       if(now>ed){
-        // Non-cumulative tasks past effective deadline → auto-fail
+        // Only auto-fail if already extended once — user gets one chance to extend via checkIn()
+        if(!task.hasExtended)continue;
         if(!task.isCumulative){task.status='failed';changed=true;this.handleTaskFail(task);}
-        // Cumulative long tasks past effective deadline with insufficient check-ins → auto-fail
         else if(task.type==='long'&&task.checkedDays.length<task.longDays){task.status='failed';changed=true;this.handleTaskFail(task);}
       }
     }
