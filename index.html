@@ -1495,7 +1495,8 @@ class App{
     const today=new Date().toDateString();
     const pendingShort=this.data.tasks.filter(t=>t.type==='short'&&(t.status==='pending'||t.status==='extended')&&t.deadline&&new Date(t.deadline).toDateString()===today);
     const completedShort=this.data.tasks.filter(t=>t.type==='short'&&t.status==='completed'&&t.deadline&&new Date(t.deadline).toDateString()===today);
-    if(pendingShort.length===0&&completedShort.length>0){
+    const failedShort=this.data.tasks.filter(t=>t.type==='short'&&t.status==='failed'&&t.deadline&&new Date(t.deadline).toDateString()===today);
+    if(pendingShort.length===0&&failedShort.length===0&&completedShort.length>0){
       const td=todayStr();
       const alreadyGiven=this.data.gardenItems.some(i=>i.type==='tree'&&i.date===td)||this.data.pendingPlacements.some(i=>i.type==='tree'&&i.date===td)||this.data.scheduledRewards.some(r=>r.date===td&&r.type==='tree');
       if(!alreadyGiven){
@@ -1538,7 +1539,8 @@ class App{
       if(reward.type==='tree'){
         const rewardDate=new Date(reward.scheduledTime).toDateString();
         const pendingShort=this.data.tasks.filter(t=>t.type==='short'&&(t.status==='pending'||t.status==='extended')&&t.deadline&&new Date(t.deadline).toDateString()===rewardDate);
-        if(pendingShort.length===0){
+        const failedShort=this.data.tasks.filter(t=>t.type==='short'&&t.status==='failed'&&t.deadline&&new Date(t.deadline).toDateString()===rewardDate);
+        if(pendingShort.length===0&&failedShort.length===0){
           this.data.pendingPlacements.push({id:reward.id,type:reward.type,taskId:reward.taskId,taskTitle:reward.taskTitle,date:reward.date,species:reward.species});
           this.data.stats.treesEarned+=1;
           this.toast(`🌳 全勤树已发放：${TREE_SPECIES[reward.species]?.name||'树'}！`,'success');
