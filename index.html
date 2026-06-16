@@ -1102,6 +1102,11 @@ class App{
       document.getElementById('custom-days-wrap').classList.toggle('hidden',e.target.value!=='custom');
     });
 
+    // Enter key on schedule title → add schedule
+    document.getElementById('schedule-title').addEventListener('keydown',(e)=>{
+      if(e.key==='Enter'){e.preventDefault();this.addSchedule();}
+    });
+
     this.renderTaskList();this.updateStats();this.updatePlaceQueue();
     setInterval(()=>{this.checkOverdueTasks();this.checkDailyTreeReward();},30000);
     setTimeout(()=>this.checkDailyTreeReward(),2000);
@@ -1322,7 +1327,7 @@ class App{
     if(!title){this.toast('请输入日程内容！','error');return;}
     const startTime=document.getElementById('schedule-time-start').value||null;
     const endTime=document.getElementById('schedule-time-end').value||null;
-    const dateVal=document.getElementById('schedule-date').value;
+    const dateVal=document.getElementById('schedule-date').value||todayStr();
     const entry={
       id:uid(),title,
       startTime:startTime,endTime:endTime,
@@ -1333,6 +1338,7 @@ class App{
     document.getElementById('schedule-title').value='';
     document.getElementById('schedule-time-start').value='';
     document.getElementById('schedule-time-end').value='';
+    document.getElementById('schedule-date').value=todayStr();
     this.renderSchedule();
     this.toast('📜 日程已添加！','success');
   }
