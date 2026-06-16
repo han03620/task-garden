@@ -435,23 +435,6 @@ function migrateData(data){
   return data;
 }
 
-function repairScheduleDates(data){
-  if(!data.schedule) return;
-  let changed=false;
-  for(const s of data.schedule){
-    // Valid date: non-empty YYYY-MM-DD string, not 'today'/'tomorrow'
-    const isValidDate=s.date&&s.date!=='today'&&s.date!=='tomorrow'&&/^\d{4}-\d{2}-\d{2}$/.test(s.date);
-    if(!isValidDate){
-      // Resolve from createdAt or fallback to today
-      try{
-        s.date=s.createdAt?new Date(s.createdAt).toISOString().slice(0,10):todayStr();
-      }catch(e){s.date=todayStr();}
-      changed=true;
-    }
-  }
-  if(changed) saveData(data);
-}
-
 function loadData(){
   try{
     const raw=localStorage.getItem(STORE_KEY);
@@ -466,9 +449,7 @@ function loadData(){
           }
         }
       }
-      data=migrateData(data);
-      repairScheduleDates(data);
-      return data;
+      return migrateData(data);
     }
   }catch(e){console.error('Load failed:',e);}
   return defaultData();
@@ -1300,10 +1281,16 @@ class App{
     }
     // Resolve date: handle legacy 'today'/'tomorrow' via createdAt fallback
     const resolveDate=s=>{
+      // Handle legacy 'today'/'tomorrow'
       if(s.date==='today'||s.date==='tomorrow'){
-        return s.createdAt?new Date(s.createdAt).toISOString().slice(0,10):todayStr();
+        try{return s.createdAt?new Date(s.createdAt).toISOString().slice(0,10):todayStr();}catch(e){}
+        return todayStr();
       }
-      return s.date||todayStr();
+      // Valid YYYY-MM-DD → use as-is
+      if(s.date&&/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return s.date;
+      // Missing/invalid/empty → try createdAt, fallback to today
+      try{return s.createdAt?new Date(s.createdAt).toISOString().slice(0,10):todayStr();}catch(e){}
+      return todayStr();
     };
     const fmtDateLabel=d=>{
       const dt=new Date(d+'T00:00:00');
